@@ -58,8 +58,8 @@ function createZip(schemaData, dbtRulesData, updateStatus, fileData) {
   // Add diagram image if available
   try {
     if (window.myDiagram) {
-      const imgData = window.myDiagram.makeImageData({background: "white", scale: 1, type: "image/jpeg"});
-      zip.file("er_diagram.jpeg", imgData.split(',')[1], {base64: true});
+      const imgData = window.myDiagram.makeImageData({background: "white", scale: 1, type: "image/webp"});
+      zip.file("er_diagram.webp", imgData.split(',')[1], {base64: true});
     }
   } catch (error) {
     console.error("Error creating diagram image:", error);

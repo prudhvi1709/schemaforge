@@ -613,5 +613,34 @@ function handleDbtRuleUpdate(fullResponse, cleanResponse) {
   }
 }
 
+/**
+ * Expand all collapsible cards with IDs containing the specified prefix
+ * @param {string} prefix - The prefix to match in card IDs (e.g., 'schema-collapse', 'column-collapse')
+ */
+function expandAllCards(prefix) {
+  // Find all collapse elements that match the prefix
+  const collapseElements = document.querySelectorAll(`[id^="${prefix}"]`);
+  
+  collapseElements.forEach(collapseElement => {
+    // Check if the element is collapsed
+    if (collapseElement.classList.contains('collapse') && !collapseElement.classList.contains('show')) {
+      // Create a Bootstrap collapse instance and show it
+      const bsCollapse = new bootstrap.Collapse(collapseElement, {
+        toggle: false
+      });
+      bsCollapse.show();
+      
+      // Update the associated button's aria-expanded attribute
+      const triggerButton = document.querySelector(`[data-bs-target="#${collapseElement.id}"]`);
+      if (triggerButton) {
+        triggerButton.setAttribute('aria-expanded', 'true');
+      }
+    }
+  });
+}
+
+// Make the function globally available
+window.expandAllCards = expandAllCards;
+
 // Initialize the application
 document.addEventListener("DOMContentLoaded", init);

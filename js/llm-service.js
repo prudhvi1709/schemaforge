@@ -202,14 +202,15 @@ function createSchemaPrompt(fileData) {
   
   // Prepare sheets data
   const sheetsData = fileData.sheets.map(sheet => {
-    // Simple TSV formatter - convert array of objects to TSV format
-    const tsvData = sheet.sampleRows.map(row => 
-      sheet.headers.map(header => {
-        const value = row[header] || '';
+    // TSV formatter - convert array of arrays to TSV format
+    const tsvData = sheet.sampleRows.map(row => {
+      // row is an array, not an object, so we map by index
+      return row.map((value, index) => {
+        const cellValue = value !== undefined && value !== null ? String(value) : '';
         // Escape tabs and newlines in values
-        return String(value).replace(/\t/g, ' ').replace(/\n/g, ' ');
-      }).join('\t')
-    ).join('\n');
+        return cellValue.replace(/\t/g, ' ').replace(/\n/g, ' ');
+      }).join('\t');
+    }).join('\n');
     
     return `
 Sheet: ${sheet.name}
