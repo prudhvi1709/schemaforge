@@ -1,0 +1,34 @@
+{
+  "demos": [
+    {
+      "title": "EHR Data",
+      "href": "https://raw.githubusercontent.com/gramener/datasets/refs/heads/main/ehr.csv",
+      "audience": "Given a Pandas DataFrame df, generate 8 use cases useful for a launch effectiveness team in a pharmaceutical company as JSON. The pharmaceutical company has invented a pill which is as effective and safe as an injectable. They want to maximize the possible target market and patients to reach out to. Target patients could be those who are already on injectables, those who are on pills but are ready to switch to injectables, and those who face barriers or challenges with current injectable therapies. Think holistically, incorporating clinical, geographical, behavioral, and socio-economic factors to maximize the target market for an impactful drug launch. Ensure that all generated hypotheses are solely based on the data available in the given dataset.",
+      "body": "Electronic Health Records covering patient demographics, clinical metrics, comorbidities, medications, etc. over time"
+    },
+    {
+      "title": "Tourist Spend",
+      "href": "https://raw.githubusercontent.com/gramener/datasets/refs/heads/main/tourists.csv",
+      "audience": "Given tourist spend data, generate insights on how a government tourism department can increase tourist spend in the country.",
+      "body": "Tourist spend data with details on issuer country, transaction amount, and other details."
+    },
+    {
+      "title": "Card Transactions",
+      "href": "https://raw.githubusercontent.com/gramener/datasets/main/card_transactions.csv",
+      "audience": "Given card transaction data, generate insights on consumer spending behavior, fraud detection, and financial trends. This information can be valuable for financial analysts, marketers, and risk management professionals.",
+      "body": "Card transactions data with details on issuer country, transaction amount, and other details."
+    },
+    {
+      "title": "HR: Employee Data",
+      "href": "https://raw.githubusercontent.com/gramener/datasets/main/employee_data.csv",
+      "audience": "Given employee data, generate insights on workforce demographics, performance analysis, and salary trends. This information can be valuable for HR professionals, organizational leaders, and data analysts.",
+      "body": "Employee master data with demographics, job details, hierarchy, salary, performance, and other details."
+    },
+    {
+      "title": "Marvel Powers",
+      "href": "https://raw.githubusercontent.com/sanand0/marvel-powers/master/marvel-powers-summary.csv",
+      "audience": "Given data on Marvel characters and their powers, generate insights for fans, game developers, and researchers interested in character abilities and dynamics within the Marvel universe.",
+      "body": "Every Marvel character and variant along with their powers (at their weakest and strongest) from Marvel Fandom."
+    }
+  ]
+}

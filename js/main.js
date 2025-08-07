@@ -1,6 +1,6 @@
 import { html, render } from "lit-html";
 import { openaiConfig } from "https://cdn.jsdelivr.net/npm/bootstrap-llm-provider@1.2";
-import { parseFile } from "./file-parser.js";
+import { parseFile, parseFileFromUrl } from "./file-parser.js";
 import {
   generateSchema,
   generateDbtRules,
@@ -93,6 +93,17 @@ function setupEventListeners() {
   if (chatFormFloating) {
     chatFormFloating.addEventListener("submit", handleChatSubmit);
   }
+  
+  // Sample datasets button listener
+  const sampleDatasetsBtn = document.getElementById("sample-datasets-btn");
+  if (sampleDatasetsBtn) {
+    sampleDatasetsBtn.addEventListener("click", () => {
+      const container = document.getElementById('sample-datasets-container');
+      if (container && container.querySelectorAll('.sample-dataset-card').length === 0) {
+        loadSampleDatasets();
+      }
+    });
+  }
 }
 
 /**
@@ -145,6 +156,101 @@ function handleResetChat() {
   }
   
   updateStatus("Chat history has been reset", "info");
+}
+
+
+
+/**
+ * Load sample datasets from config and render them as cards
+ */
+async function loadSampleDatasets() {
+  const response = await fetch('./config.json');
+  const config = await response.json();
+  const container = document.getElementById('sample-datasets-container');
+  const datasets = config.demos || [];
+  
+  // Create cards for each dataset
+  const cardsHTML = datasets.map(dataset => `
+    <div class="col-md-6 col-lg-4 mb-3">
+      <div class="card h-100 sample-dataset-card" data-url="${dataset.href}" data-title="${dataset.title}" data-audience="${dataset.audience}" style="cursor: pointer; transition: transform 0.2s;">
+        <div class="card-body">
+          <h5 class="card-title">${dataset.title}</h5>
+          <p class="card-text text-muted">${dataset.body}</p>
+        </div>
+      </div>
+    </div>
+  `).join('');
+  
+  container.innerHTML = cardsHTML;
+  
+  // Add click event listeners to the cards
+  const cards = container.querySelectorAll('.sample-dataset-card');
+  cards.forEach(card => {
+    card.addEventListener('click', handleSampleDatasetClick);
+    card.addEventListener('mouseenter', () => {
+      card.style.transform = 'translateY(-2px)';
+      card.style.boxShadow = '0 4px 8px rgba(0,0,0,0.1)';
+    });
+    card.addEventListener('mouseleave', () => {
+      card.style.transform = 'translateY(0)';
+      card.style.boxShadow = 'none';
+    });
+  });
+}
+
+/**
+ * Handle sample dataset card click
+ */
+async function handleSampleDatasetClick(event) {
+  const card = event.currentTarget;
+  const url = card.dataset.url;
+  const title = card.dataset.title;
+  
+  if (!url || !llmConfig) {
+    updateStatus("Please configure LLM settings first", "warning");
+    return;
+  }
+  
+  card.style.opacity = '0.6';
+  card.style.pointerEvents = 'none';
+  setLoading("upload", true);
+  updateStatus(`Loading ${title}...`, "info");
+  
+  try {
+    fileData = await parseFileFromUrl(url, title);
+    document.getElementById("results-container").classList.remove("d-none");
+    
+    schemaData = {
+      schemas: [],
+      relationships: [],
+      suggestedJoins: [],
+      modelingRecommendations: [],
+    };
+    
+    renderSchemaResults(schemaData);
+    updateStatus("Generating schema...", "info");
+    
+    schemaData = await generateSchema(fileData, llmConfig, (partialData) => {
+      if (partialData) {
+        if (!partialData.relationships) partialData.relationships = [];
+        renderSchemaOverview(partialData);
+        renderColumnDescriptions(partialData);
+        renderRelationships(partialData);
+        renderJoinsAndModeling(partialData);
+      }
+    });
+    
+    if (!schemaData.relationships) schemaData.relationships = [];
+    renderSchemaResults(schemaData);
+    document.getElementById("generate-dbt-btn").classList.remove("d-none");
+    updateStatus(`Schema generation complete for ${title}!`, "success");
+  } catch (error) {
+    updateStatus(`Error loading ${title}: ${error.message}`, "danger");
+  } finally {
+    setLoading("upload", false);
+    card.style.opacity = '1';
+    card.style.pointerEvents = 'auto';
+  }
 }
 
 async function initLlmConfig() {

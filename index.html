@@ -46,6 +46,9 @@
                 <button type="button" class="btn btn-outline-primary" id="configure-llm-btn">
                   Configure LLM Provider
                 </button>
+                <button type="button" class="btn btn-outline-secondary" id="sample-datasets-btn" data-bs-toggle="collapse" data-bs-target="#sample-datasets-section" aria-expanded="false" aria-controls="sample-datasets-section">
+                  Sample Datasets
+                </button>
               </div>
             </form>
             
@@ -76,6 +79,25 @@
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="reset-prompts-btn">Reset to Default</button>
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sample Datasets Section (Collapsible) -->
+    <div class="collapse" id="sample-datasets-section">
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-header">
+              <h4 class="card-title">Sample Datasets</h4>
+              <p class="card-text text-muted mb-0">Click on any dataset to load and analyze it automatically</p>
+            </div>
+            <div class="card-body">
+              <div class="row" id="sample-datasets-container">
+                <!-- Sample dataset cards will be dynamically loaded here -->
               </div>
             </div>
           </div>
