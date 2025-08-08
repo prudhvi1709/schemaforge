@@ -172,7 +172,7 @@ async function loadSampleDatasets() {
   // Create cards for each dataset
   const cardsHTML = datasets.map(dataset => `
     <div class="col-md-6 col-lg-4 mb-3">
-      <div class="card h-100 sample-dataset-card" data-url="${dataset.href}" data-title="${dataset.title}" data-audience="${dataset.audience}" style="cursor: pointer; transition: transform 0.2s;">
+      <div class="card h-100 sample-dataset-card" data-url="${dataset.href}" data-title="${dataset.title}" style="cursor: pointer; transition: transform 0.2s;">
         <div class="card-body">
           <h5 class="card-title">${dataset.title}</h5>
           <p class="card-text text-muted">${dataset.body}</p>
