@@ -6,28 +6,13 @@
       "body": "Electronic Health Records covering patient demographics, clinical metrics, comorbidities, medications, etc. over time"
     },
     {
-      "title": "Tourist Spend",
-      "href": "https://raw.githubusercontent.com/gramener/datasets/refs/heads/main/tourists.csv",
-      "body": "Tourist spend data with details on issuer country, transaction amount, and other details."
-    },
-    {
       "title": "Card Transactions",
       "href": "https://raw.githubusercontent.com/gramener/datasets/main/card_transactions.csv",
       "body": "Card transactions data with details on issuer country, transaction amount, and other details."
     },
     {
-      "title": "HR: Employee Data",
-      "href": "https://raw.githubusercontent.com/gramener/datasets/main/employee_data.csv",
-      "body": "Employee master data with demographics, job details, hierarchy, salary, performance, and other details."
-    },
-    {
-      "title": "Marvel Powers",
-      "href": "https://raw.githubusercontent.com/sanand0/marvel-powers/master/marvel-powers-summary.csv",
-      "body": "Every Marvel character and variant along with their powers (at their weakest and strongest) from Marvel Fandom."
-    },
-    {
       "title": "Pharma Trails",
-      "href": "https://raw.githubusercontent.com/gramener/datasets/main/pharma-trails.csv",
+      "href": "https://raw.githubusercontent.com/gramener/datasets/main/pharma-trials.xlsx",
       "body": "Pharmaceutical trails data with details on drug name, trial phase, trial status, and other details."
     }
   ]
