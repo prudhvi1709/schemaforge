@@ -21,6 +21,7 @@ A modern web application that automatically generates DBT (Data Build Tool) rule
 - **Multiple LLM Providers**: Support for OpenAI, OpenRouter, Ollama, and custom APIs
 - **Streaming Responses**: Real-time streaming of LLM outputs as they're generated
 - **Interactive ER Diagrams**: Drag-and-drop entity relationship diagrams with GoJS
+- **DBT Local Development**: Complete DBT project generation for local development environments
 
 ## 🏗️ Architecture
 
@@ -44,7 +45,10 @@ schemaforge/
 │   ├── file-parser.js      # CSV/Excel file parsing logic
 │   ├── llm-service.js      # LLM API integration and prompts
 │   ├── ui.js               # DOM manipulation and rendering
-│   └── diagram.js          # Entity relationship diagram functionality
+│   ├── diagram.js          # Entity relationship diagram functionality
+│   ├── dbt-generation.js   # DBT rules generation and chat functionality
+│   ├── dbt-local-service.js # DBT local development project creation
+│   └── export-service.js   # Data export and documentation generation
 ├── data/                   # Sample data files
 └── README.md               # This file
 ```
@@ -122,26 +126,52 @@ schemaforge/
 - Includes models, tests, and data quality configurations
 - Production-ready YAML and SQL code
 
-### Step 6: Interactive Chat
+### Step 6: DBT Local Development
+
+- Click "Export DBT Local" to generate a complete DBT project for local development
+- Downloads a ZIP file containing:
+  - Complete DBT project structure (`dbt_project.yml`, `profiles.yml`, `packages.yml`)
+  - SQL model files with proper seed references
+  - Schema configuration with data quality tests (filtered for existing columns)
+  - Automated setup script (`setup_dbt.sh`) for one-command deployment
+  - Documentation files and README with setup instructions
+- **Production-ready**: Includes DuckDB configuration and automated dependency installation
+- **Data validation**: Only generates tests for columns that actually exist in your data
+
+### Step 7: Interactive Chat
 
 - Use the chat interface to ask questions about your data
 - Request modifications to the generated DBT rules
 - Perform exploratory data analysis through natural language
 - **Streaming responses**: See the assistant's responses appear in real-time
 
-### Step 7: Export Results
+### Step 8: Export Results
 
 - Download the complete analysis as a structured JSON file
 - Includes schema, column descriptions, and DBT configurations
+- Or export the full DBT local development project for immediate use
 
 ## 🔧 Technical Implementation
 
 ### LLM Integration
 
-The application uses a two-stage LLM process:
+The application uses a multi-stage LLM process:
 
 1. **Schema Generation**: Analyzes file structure and sample data to create comprehensive schema
 2. **DBT Rules Generation**: Transforms schema into production-ready DBT configurations
+3. **DBT Local Project Creation**: Generates complete, deployable DBT projects with automated setup
+
+### DBT Local Development Features
+
+SchemaForge now includes comprehensive DBT local development capabilities:
+
+- **Automated Project Setup**: One-command deployment with `setup_dbt.sh` script
+- **Column Validation**: Smart filtering ensures tests are only created for columns that exist in your actual data
+- **DuckDB Integration**: Pre-configured for local development with embedded database
+- **Package Management**: Automatic installation of `dbt-utils` and other dependencies  
+- **Data Conversion**: Automatic Excel/CSV to seed conversion with proper sanitization
+- **Documentation**: Complete project documentation with setup instructions
+- **Error Prevention**: Eliminates "column not found" errors through validation
 
 ### Entity Relationship Diagram
 
@@ -177,11 +207,12 @@ The application is designed to work with multiple LLM providers through a flexib
 
 ## 🎯 Use Cases
 
-- **Data Engineers**: Generate DBT boilerplate for new data sources
-- **Analytics Teams**: Quick schema documentation and data quality rules
-- **Data Scientists**: Understand data structure before analysis
-- **Consultants**: Rapid data assessment and documentation
-- **Database Designers**: Visualize and refine database schemas
+- **Data Engineers**: Generate DBT boilerplate for new data sources with complete local development setup
+- **Analytics Teams**: Quick schema documentation, data quality rules, and immediate DBT project deployment
+- **Data Scientists**: Understand data structure before analysis with automated DBT environment setup
+- **Consultants**: Rapid data assessment, documentation, and client-ready DBT projects
+- **Database Designers**: Visualize and refine database schemas with production-ready implementation
+- **DevOps Teams**: Automated DBT project scaffolding with infrastructure-as-code approach
 
 ## 🛠️ Development
 
@@ -219,3 +250,14 @@ For issues and questions:
 - Check the chat interface for data-related queries
 - Review the LLM provider configuration for API issues
 - Ensure file formats are supported (CSV, XLSX only)
+- For DBT local development issues, verify Python dependencies and file permissions on the setup script
+
+## 🆕 What's New
+
+### DBT Local Development (Latest Update)
+
+- **Complete DBT Project Generation**: Export ready-to-use DBT projects with all necessary configuration files
+- **Automated Setup**: One-command deployment with intelligent dependency management
+- **Column Validation**: Smart test generation that prevents "column not found" errors
+- **DuckDB Integration**: Pre-configured local development environment
+- **Production Ready**: Includes proper SQL model generation, schema validation, and documentation
