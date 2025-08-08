@@ -333,10 +333,12 @@ function getDefaultDbtRulesPrompt() {
 
 Schema Data: \${schemaData}
 
+IMPORTANT: All SQL models must reference seeds using {{ ref('SEED_NAME') }} format. Do NOT use table names or add '_seed' suffix. The seed name will be the sanitized dataset name.
+
 For each table/schema, please provide:
-1. A DBT model definition that respects relationships and foreign keys
+1. A DBT model definition that ONLY references seeds using {{ ref('seed_name') }} format - never use raw table names or _seed suffix
 2. Appropriate tests for each column including relationship tests
-3. Documentation configurations
+3. Documentation configurations  
 4. Any recommended materialization strategy
 
 Include appropriate tests like:

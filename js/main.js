@@ -22,6 +22,7 @@ import {
   showDbtRuleLoadingIndicator,
 } from "./ui.js";
 import { exportToZip } from "./export-service.js";
+import { exportDbtLocalZip } from "./dbt-local-service.js";
 import { unsafeHTML } from "lit-html/directives/unsafe-html";
 import { Marked } from "https://cdn.jsdelivr.net/npm/marked@13/+esm";
 
@@ -50,6 +51,11 @@ function setupEventListeners() {
   const exportBtn = document.getElementById("export-btn");
   if (exportBtn) {
     exportBtn.addEventListener("click", handleExport);
+  }
+  
+  const runDbtLocallyBtn = document.getElementById("run-dbt-locally-btn");
+  if (runDbtLocallyBtn) {
+    runDbtLocallyBtn.addEventListener("click", handleRunDbtLocally);
   }
   
   const configureLlmBtn = document.getElementById("configure-llm-btn");
@@ -473,6 +479,28 @@ function handleExport() {
   }
   
   exportToZip(schemaData, dbtRulesData, updateStatus, fileData);
+}
+
+/**
+ * Handle run DBT locally button click
+ */
+function handleRunDbtLocally() {
+  if (!schemaData) {
+    updateStatus("No data available to export", "warning");
+    return;
+  }
+  
+  if (!dbtRulesData || !dbtRulesData.dbtRules) {
+    updateStatus("DBT rules are required for local development. Please generate DBT rules first.", "warning");
+    return;
+  }
+  
+  if (!fileData || !fileData._originalFileContent) {
+    updateStatus("Original dataset file is required for local development. Please upload a file first.", "warning");
+    return;
+  }
+  
+  exportDbtLocalZip(schemaData, dbtRulesData, updateStatus, fileData);
 }
 
 /**
