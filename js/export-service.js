@@ -10,14 +10,42 @@
  * @param {Object} fileData - The uploaded dataset file (optional)
  */
 export function exportToZip(schemaData, dbtRulesData, updateStatus, fileData) {
-  // Load JSZip library dynamically if needed
+  loadJSZipAndExecute(async () => await createZip(schemaData, dbtRulesData, updateStatus, fileData, false));
+}
+
+/**
+ * Export for DBT Local Run - includes shell script and all required files
+ * @param {Object} schemaData - Schema information
+ * @param {Object} dbtRulesData - DBT rules (required)
+ * @param {Function} updateStatus - Function to update UI status
+ * @param {Object} fileData - The uploaded dataset file (required)
+ */
+export function exportForDbtLocalRun(schemaData, dbtRulesData, updateStatus, fileData) {
+  if (!dbtRulesData) {
+    updateStatus && updateStatus("DBT rules are required for local run export", "danger");
+    return;
+  }
+  
+  if (!fileData || !fileData._originalFileContent) {
+    updateStatus && updateStatus("Original dataset file is required for local run export", "danger");
+    return;
+  }
+  
+  loadJSZipAndExecute(async () => await createZip(schemaData, dbtRulesData, updateStatus, fileData, true));
+}
+
+/**
+ * Load JSZip library dynamically if needed
+ * @param {Function} callback - Function to call after JSZip is loaded
+ */
+function loadJSZipAndExecute(callback) {
   if (typeof JSZip === 'undefined') {
     const script = document.createElement('script');
     script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-    script.onload = () => createZip(schemaData, dbtRulesData, updateStatus, fileData);
+    script.onload = callback;
     document.head.appendChild(script);
   } else {
-    createZip(schemaData, dbtRulesData, updateStatus, fileData);
+    callback();
   }
 }
 
@@ -27,24 +55,57 @@ export function exportToZip(schemaData, dbtRulesData, updateStatus, fileData) {
  * @param {Object} dbtRulesData - DBT rules (optional)
  * @param {Function} updateStatus - Function to update UI status
  * @param {Object} fileData - The uploaded dataset file (optional)
+ * @param {boolean} isDbtLocalRun - Whether this is for DBT local run export
  */
-function createZip(schemaData, dbtRulesData, updateStatus, fileData) {
+async function createZip(schemaData, dbtRulesData, updateStatus, fileData, isDbtLocalRun = false) {
   const zip = new JSZip();
   const notify = msg => updateStatus && updateStatus(msg.text, msg.type);
   
-  // Add the original uploaded dataset file if available
-  if (fileData && fileData._originalFileContent) {
-    notify({text: "Adding original dataset file to export", type: "info"});
-    try {
-      // Store with original filename in a datasets/ folder for organization
-      zip.file(`dataset-${fileData.name}`, fileData._originalFileContent, { binary: true });
-    } catch (error) {
-      console.error("Error adding dataset file to zip:", error);
-      notify({text: "Could not include original dataset file in export", type: "warning"});
-    }
+  notify({text: isDbtLocalRun ? "Creating DBT local run package..." : "Creating export package...", type: "info"});
+  
+  // Add dataset file if available
+  addDatasetFile(zip, fileData, notify);
+  
+  // Add markdown files
+  addMarkdownFiles(zip, schemaData, dbtRulesData, notify, isDbtLocalRun);
+  
+  // Add diagram if available
+  addDiagramImage(zip, notify);
+  
+  // Add DBT-specific files for local run
+  if (isDbtLocalRun) {
+    await addDbtLocalRunFiles(zip, notify);
   }
   
-  // Add markdown files to zip
+  // Download the zip
+  downloadZip(zip, notify, isDbtLocalRun);
+}
+
+/**
+ * Add dataset file to ZIP
+ */
+function addDatasetFile(zip, fileData, notify) {
+  if (fileData && fileData._originalFileContent) {
+    notify({text: "Adding dataset file", type: "info"});
+    try {
+      // Ensure filename has dataset- prefix for compatibility with run_dbt.sh
+      const fileName = fileData.name.startsWith('dataset-') 
+        ? fileData.name 
+        : `dataset-${fileData.name}`;
+      
+      // Always store as binary to preserve original file format (Excel, CSV, etc.)
+      zip.file(fileName, fileData._originalFileContent, { binary: true });
+    } catch (error) {
+      console.error("Error adding dataset file to zip:", error);
+      notify({text: "Could not include dataset file in export", type: "warning"});
+    }
+  }
+}
+
+/**
+ * Add markdown files to ZIP
+ */
+function addMarkdownFiles(zip, schemaData, dbtRulesData, notify, isDbtLocalRun) {
   const files = {
     "schema_overview.md": generateSchemaMarkdown(schemaData),
     "column_descriptions.md": generateColumnsMarkdown(schemaData),
@@ -52,37 +113,73 @@ function createZip(schemaData, dbtRulesData, updateStatus, fileData) {
     "joins_and_modeling.md": generateJoinsMarkdown(schemaData)
   };
   
-  if (dbtRulesData) files["dbt_rules.md"] = generateDbtMarkdown(dbtRulesData);
-  Object.entries(files).forEach(([name, content]) => zip.file(name, content));
+  // Always include DBT rules for local run, optional for regular export
+  if (isDbtLocalRun || dbtRulesData) {
+    files["dbt_rules.md"] = generateDbtMarkdown(dbtRulesData);
+  }
   
-  // Add diagram image if available
+  Object.entries(files).forEach(([name, content]) => zip.file(name, content));
+  notify({text: "Added documentation files", type: "info"});
+}
+
+/**
+ * Add diagram image to ZIP
+ */
+function addDiagramImage(zip, notify) {
   try {
     if (window.myDiagram) {
       const imgData = window.myDiagram.makeImageData({background: "white", scale: 1, type: "image/webp"});
       zip.file("er_diagram.webp", imgData.split(',')[1], {base64: true});
+      notify({text: "Added ER diagram", type: "info"});
     }
   } catch (error) {
     console.error("Error creating diagram image:", error);
-    notify({text: "Error creating diagram image", type: "warning"});
+    notify({text: "Could not create diagram image", type: "warning"});
   }
+}
+
+/**
+ * Add DBT local run specific files
+ */
+async function addDbtLocalRunFiles(zip, notify) {
+  // Add shell script
+  const shellScript = await getRunDbtShellScript();
+  zip.file("run_dbt.sh", shellScript);
+  notify({text: "Added run_dbt.sh shell script", type: "info"});
   
-  // Download the zip file
+  // Add README
+  zip.file("README.md", generateDbtRunReadme());
+  notify({text: "Added README with instructions", type: "info"});
+}
+
+/**
+ * Download the ZIP file
+ */
+function downloadZip(zip, notify, isDbtLocalRun) {
+  const filename = isDbtLocalRun 
+    ? `schemaforge_dbt_local_${new Date().toISOString().slice(0, 10)}.zip`
+    : `schemaforge_export_${new Date().toISOString().slice(0, 10)}.zip`;
+    
+  const successMessage = isDbtLocalRun 
+    ? "DBT local run package ready! Extract and run ./run_dbt.sh"
+    : "Export completed successfully";
+
   zip.generateAsync({type: "blob"})
     .then(content => {
       const a = document.createElement("a");
       a.href = URL.createObjectURL(content);
-      a.download = `schemaforge_export_${new Date().toISOString().slice(0, 10)}.zip`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       setTimeout(() => {
         document.body.removeChild(a);
         URL.revokeObjectURL(a.href);
       }, 0);
-      notify({text: "Export completed successfully", type: "success"});
+      notify({text: successMessage, type: "success"});
     })
     .catch(error => {
       console.error("Error generating zip:", error);
-      notify({text: "Error generating zip file", type: "danger"});
+      notify({text: `Error generating ${isDbtLocalRun ? 'DBT local run package' : 'zip file'}`, type: "danger"});
     });
 }
 
@@ -116,7 +213,6 @@ function generateColumnsMarkdown(data) {
   data.schemas.forEach(schema => {
     md += `## ${schema.tableName}\n\n`;
     schema.columns?.forEach(col => {
-      // Basic info
       md += `### ${col.name}\n\n**Type:** ${col.dataType}\n\n**Description:** ${col.description || 'No description available'}\n\n`;
       
       // Flags
@@ -183,6 +279,8 @@ function generateJoinsMarkdown(data) {
 }
 
 function generateDbtMarkdown(data) {
+  if (!data) return "# DBT Rules\n\nNo DBT rules generated.\n";
+  
   let md = "# DBT Rules\n\n";
   
   // Global recommendations
@@ -232,4 +330,110 @@ function generateDbtMarkdown(data) {
     md += "\n";
   });
   return md;
-} 
+}
+
+/**
+ * Get the shell script content for DBT local run
+ */
+async function getRunDbtShellScript() {
+  try {
+    const response = await fetch('run_dbt.sh');
+    if (response.ok) {
+      return await response.text();
+    } else {
+      console.warn('Could not load run_dbt.sh, using fallback');
+      return getFallbackShellScript();
+    }
+  } catch (error) {
+    console.warn('Error loading run_dbt.sh:', error);
+    return getFallbackShellScript();
+  }
+}
+
+/**
+ * Fallback shell script content if run_dbt.sh cannot be loaded
+ */
+function getFallbackShellScript() {
+  return `#!/bin/bash
+# Fallback DBT run script
+echo "⚠️  Using fallback script - please ensure run_dbt.sh is available"
+echo "Please place the run_dbt.sh file in your project root and try again"
+exit 1`;
+}
+
+/**
+ * Generate README for DBT local run package
+ */
+function generateDbtRunReadme() {
+  return `# SchemaForge DBT Local Run Package
+
+This package contains everything you need to run DBT locally with your SchemaForge-generated rules.
+
+## Contents
+
+- \`dataset-*\` - Your original dataset file
+- \`dbt_rules.md\` - Generated DBT rules with SQL and YAML configurations
+- \`run_dbt.sh\` - Automated setup and run script
+- \`*.md\` - Schema documentation files
+- \`er_diagram.webp\` - Entity relationship diagram
+
+## Prerequisites
+
+Before running, ensure you have:
+
+1. **Python 3** with required packages:
+   \`\`\`bash
+   pip install pandas openpyxl chardet
+   \`\`\`
+
+2. **DBT with DuckDB adapter**:
+   \`\`\`bash
+   pip install dbt-core dbt-duckdb
+   \`\`\`
+
+## Quick Start
+
+1. **Extract this ZIP file** to a directory
+2. **Open terminal** in the extracted directory
+3. **Run the automation script**:
+   \`\`\`bash
+   chmod +x run_dbt.sh
+   ./run_dbt.sh
+   \`\`\`
+
+## What the Script Does
+
+The \`run_dbt.sh\` script will automatically:
+
+1. ✅ Find your dataset file
+2. 🔄 Convert Excel to CSV (if needed)
+3. 📂 Create a proper DBT project structure
+4. 🔍 Extract SQL models and YAML configs from \`dbt_rules.md\`
+5. ⚙️ Set up \`dbt_project.yml\` and \`profiles.yml\`
+6. 🏗️ Run DBT seed, run, and test commands
+7. 📊 Generate data quality test results
+
+## Results
+
+After running, you'll have:
+
+- **\`my_dbt_project/\`** - Complete DBT project
+- **\`my_dbt_project/my_local.duckdb\`** - Database with your data and models
+- **\`my_dbt_project/target/run_results.json\`** - Detailed test results
+- Data quality issues identified through DBT tests
+
+## Troubleshooting
+
+- If conversion fails, ensure pandas and openpyxl are installed
+- If DBT commands fail, check that dbt-core and dbt-duckdb are installed
+- Tests may fail intentionally to highlight data quality issues
+
+## Next Steps
+
+- Explore the database file with any SQL client that supports DuckDB
+- Review test results in \`target/run_results.json\`
+- Customize the DBT models in \`my_dbt_project/models/\`
+- Run \`dbt docs generate && dbt docs serve\` for interactive documentation
+
+Generated by SchemaForge 🔥`;
+}

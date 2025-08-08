@@ -100,7 +100,7 @@ For modifying existing rules:
 - Do NOT set "isNewRule": true
 
 DBT rule JSON format for new rules:
-DBT_RULE_JSON: {"dbtRules": [{"isNewRule": true, "tableName": "example_table", "modelSql": "SELECT * FROM source", ...}]}
+DBT_RULE_JSON: {"dbtRules": [{"isNewRule": true, "tableName": "example_table", "modelSql": "SELECT * FROM {{ ref('table_name') }}", ...}]}
 
 For normal questions, respond in a conversational way. Only use the special format when explicit rule changes are requested.
 
@@ -307,7 +307,21 @@ async function processRuleChanges(currentRules, changes) {
  * @returns {String} Formatted prompt for the LLM
  */
 function createDbtRulesPrompt(schemaData) {
-  return getDefaultDbtRulesPrompt().replace(/\$\{schemaData\}/g, JSON.stringify(schemaData));
+  // Try to extract the seed name from the schema data
+  // Look for any indication of the original file name
+  let seedName = 'unknown';
+  
+  // Check if there's a fileName in the schema somewhere
+  if (schemaData.fileName) {
+    seedName = schemaData.fileName.replace(/^dataset-/, '').replace(/\.(xlsx|xls|csv)$/i, '');
+  } else if (schemaData.schemas?.[0]?.sheetName) {
+    // Sometimes the sheet name might contain the original info
+    seedName = schemaData.schemas[0].sheetName.replace(/^dataset-/, '').replace(/\.(xlsx|xls|csv)$/i, '');
+  }
+  
+  return getDefaultDbtRulesPrompt()
+    .replace(/\$\{schemaData\}/g, JSON.stringify(schemaData))
+    .replace(/pharma-trials/g, seedName);
 }
 
 /**
@@ -334,10 +348,18 @@ function getDefaultDbtRulesPrompt() {
 Schema Data: \${schemaData}
 
 For each table/schema, please provide:
-1. A DBT model definition that respects relationships and foreign keys
-2. Appropriate tests for each column including relationship tests
-3. Documentation configurations
-4. Any recommended materialization strategy
+1. Simple, reliable DBT model SQL that:
+   - Selects ALL columns from the single seed table: SELECT * FROM {{ seed('seed_name') }}
+   - Filters data for this specific entity/table if needed (WHERE conditions)
+   - Uses simple transformations that are guaranteed to work
+   - MUST successfully create the model table for tests to run against
+   - Keep it simple to avoid compilation errors that prevent model creation
+2. The seed table name should match the tableName from schema exactly
+3. SQL should expose data quality issues that your tests will catch
+4. Include meaningful transformations that help identify data problems
+5. Appropriate tests for each column including relationship tests
+6. Documentation configurations  
+7. Any recommended materialization strategy
 
 Include appropriate tests like:
 - not_null (especially for primary keys and required foreign keys)
@@ -351,13 +373,36 @@ For identified relationships:
 - Include referential integrity tests
 - Add tests for orphaned records if applicable
 
+CRITICAL DBT DATA LOADING REQUIREMENTS:
+- Data is loaded via dbt seeds, NOT sources
+- The original dataset file becomes a SINGLE seed table (not separate tables per schema) 
+- Based on the error "Did you mean pharma-trials?", the seed table is named "pharma-trials"
+- ALL models must use: SELECT * FROM {{ seed('pharma-trials') }}
+- Do NOT try to determine the seed name - always use "pharma-trials" for now
+- Keep models extremely simple: just SELECT * FROM {{ seed('pharma-trials') }}
+- Models will create tables (patients, prescriptions, etc.) from this single seed
+- Tests then run on the created model tables, not the seed
+
+CRITICAL: ALL models must use SELECT * FROM {{ seed('pharma-trials') }} - this is the seed table that exists.
+
+CRITICAL YAML FORMATTING REQUIREMENTS:
+- All string values in YAML must be properly quoted with double quotes
+- Never use regex patterns or complex expressions that require escaping
+- For email validation, use simple SQL: "email IS NULL OR LENGTH(email) > 5"  
+- For phone validation, use: "phone IS NULL OR LENGTH(phone) >= 10"
+- Never include debugging text, comments, or questions in YAML strings
+- All test expressions must be valid DuckDB SQL that evaluates to boolean
+- Use simple LENGTH, IS NULL, or basic comparison operators only
+- Format all YAML content properly with correct indentation
+- Avoid special characters like ~, ^, $, [], {}, () in test expressions
+
 Please structure your response as a JSON object with the following format:
 {
   "dbtRules": [
     {
       "tableName": "table_name",
-      "modelSql": "-- SQL for the model with proper joins and references",
-      "yamlConfig": "# YAML configuration for the model including tests, docs, and relationships",
+      "modelSql": "-- Simple SQL that creates reliable model tables\n-- ALL models must use the same seed table\nSELECT * FROM {{ seed('pharma-trials') }}",
+      "yamlConfig": "# YAML configuration for the model including tests, docs, and relationships\n# EXAMPLE:\n# models:\n#   - name: table_name\n#     columns:\n#       - name: email\n#         description: \"Email address\"\n#         tests:\n#           - not_null\n#           - dbt_utils.expression_is_true:\n#               expression: \"email IS NULL OR LENGTH(email) > 5\"",
       "tests": [
         {
           "column": "column_name", 

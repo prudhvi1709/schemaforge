@@ -21,7 +21,7 @@ import {
   renderChatMessage,
   showDbtRuleLoadingIndicator,
 } from "./ui.js";
-import { exportToZip } from "./export-service.js";
+import { exportToZip, exportForDbtLocalRun } from "./export-service.js";
 import { unsafeHTML } from "lit-html/directives/unsafe-html";
 import { Marked } from "https://cdn.jsdelivr.net/npm/marked@13/+esm";
 
@@ -50,6 +50,11 @@ function setupEventListeners() {
   const exportBtn = document.getElementById("export-btn");
   if (exportBtn) {
     exportBtn.addEventListener("click", handleExport);
+  }
+  
+  const runDbtBtn = document.getElementById("run-dbt-btn");
+  if (runDbtBtn) {
+    runDbtBtn.addEventListener("click", handleRunDbtLocally);
   }
   
   const configureLlmBtn = document.getElementById("configure-llm-btn");
@@ -454,9 +459,10 @@ async function handleGenerateDbtRules() {
       }
     );
 
-    // Show chat button and hide generate DBT button
+    // Show chat button and run DBT button, hide generate DBT button
     document.getElementById("chat-float-btn").classList.remove("d-none");
     document.getElementById("generate-dbt-btn").classList.add("d-none");
+    document.getElementById("run-dbt-btn").classList.remove("d-none");
 
     updateStatus("DBT rules generation complete!", "success");
   } catch (error) {
@@ -473,6 +479,20 @@ function handleExport() {
   }
   
   exportToZip(schemaData, dbtRulesData, updateStatus, fileData);
+}
+
+function handleRunDbtLocally() {
+  if (!schemaData) {
+    updateStatus("No data available to export", "warning");
+    return;
+  }
+  
+  if (!dbtRulesData) {
+    updateStatus("DBT rules must be generated first. Click 'Generate DBT Rules' button.", "warning");
+    return;
+  }
+  
+  exportForDbtLocalRun(schemaData, dbtRulesData, updateStatus, fileData);
 }
 
 /**

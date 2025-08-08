@@ -83,14 +83,14 @@ export async function parseFileFromUrl(url, fileName) {
       throw new Error("Unsupported file format. Please use CSV or Excel files.");
     }
     
-    // For CSV files, we need to handle them differently
-    if (fileExtension === 'csv') {
-      const text = await response.text();
-      return parseCSVFromText(text, fileName);
-    }
-    
-    // For Excel files, use the existing XLSX parsing
+    // Get the original content as ArrayBuffer first
     const arrayBuffer = await response.arrayBuffer();
+    
+    // For CSV files, we need to handle them differently but preserve original content
+    if (fileExtension === 'csv') {
+      const text = new TextDecoder().decode(arrayBuffer);
+      return parseCSVFromText(text, fileName, arrayBuffer);
+    }
     const workbook = XLSX.read(arrayBuffer, { type: "array" });
     
     // Process each sheet in the workbook
@@ -128,9 +128,10 @@ export async function parseFileFromUrl(url, fileName) {
  * Parse CSV data from text
  * @param {string} text - CSV text content
  * @param {string} fileName - The name to use for the file
+ * @param {ArrayBuffer} originalContent - Original file content as ArrayBuffer (optional)
  * @returns {Object} Parsed file data with headers and samples
  */
-function parseCSVFromText(text, fileName) {
+function parseCSVFromText(text, fileName, originalContent) {
   try {
     const lines = text.trim().split('\n');
     if (lines.length === 0) {
@@ -151,7 +152,7 @@ function parseCSVFromText(text, fileName) {
         headers,
         sampleRows
       }],
-      _originalFileContent: new TextEncoder().encode(text)
+      _originalFileContent: originalContent || new TextEncoder().encode(text)
     };
     
     return result;
