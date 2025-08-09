@@ -1,7 +1,7 @@
 import * as XLSX from "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm";
 
 /**
- * Parse uploaded file (CSV or Excel) and extract headers and sample data
+ * Parse uploaded file (CSV, Excel, TXT, JSON, LOG) and extract content and sample data
  * @param {File} file - The uploaded file object
  * @returns {Object} Parsed file data with headers and samples
  */
@@ -9,43 +9,99 @@ export async function parseFile(file) {
   if (!file) throw new Error("No file provided");
   
   const fileExtension = file.name.split('.').pop().toLowerCase();
+  const supportedFormats = ['csv', 'xlsx', 'txt', 'json', 'log'];
   
-  if (fileExtension !== 'csv' && fileExtension !== 'xlsx') 
-    throw new Error("Unsupported file format. Please upload a CSV or Excel file.");
+  if (!supportedFormats.includes(fileExtension)) 
+    throw new Error(`Unsupported file format. Supported: ${supportedFormats.join(', ')}`);
   
   try {
-    const arrayBuffer = await readFileAsArrayBuffer(file);
-    const workbook = XLSX.read(arrayBuffer, { type: "array" });
-    
-    // Process each sheet in the workbook
-    const sheets = workbook.SheetNames.map(sheetName => {
-      const worksheet = workbook.Sheets[sheetName];
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-      
-      // Extract headers (first row) and sample data (next 10 rows max)
-      const headers = jsonData[0] || [];
-      const sampleRows = jsonData.slice(1, 11);
-      
-      // Format the data properly
-      return {
-        name: sheetName,
-        headers,
-        sampleRows
-      };
-    });
-    
-    // Store the original file content for later use (in export)
-    const result = {
-      name: file.name,
-      type: fileExtension,
-      sheets,
-      _originalFileContent: arrayBuffer
-    };
-    
-    return result;
+    if (fileExtension === 'csv' || fileExtension === 'xlsx') {
+      return await parseStructuredFile(file, fileExtension);
+    } else {
+      return await parseTextFile(file, fileExtension);
+    }
   } catch (error) {
     throw new Error(`Failed to parse file: ${error.message}`);
   }
+}
+
+/**
+ * Parse structured files (CSV, Excel)
+ */
+async function parseStructuredFile(file, fileExtension) {
+  const arrayBuffer = await readFileAsArrayBuffer(file);
+  const workbook = XLSX.read(arrayBuffer, { type: "array" });
+  
+  const sheets = workbook.SheetNames.map(sheetName => {
+    const worksheet = workbook.Sheets[sheetName];
+    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+    
+    const headers = jsonData[0] || [];
+    const sampleRows = jsonData.slice(1, 11);
+    
+    return {
+      name: sheetName,
+      headers,
+      sampleRows
+    };
+  });
+  
+  return {
+    name: file.name,
+    type: fileExtension,
+    sheets,
+    _originalFileContent: arrayBuffer
+  };
+}
+
+/**
+ * Parse text files (TXT, JSON, LOG)
+ */
+async function parseTextFile(file, fileExtension) {
+  const text = await readFileAsText(file);
+  const lines = text.split('\n').slice(0, 50); // First 50 lines for sample
+  
+  let parsedContent = lines;
+  let headers = ['Content'];
+  
+  if (fileExtension === 'json') {
+    try {
+      const jsonData = JSON.parse(text);
+      if (Array.isArray(jsonData) && jsonData.length > 0) {
+        headers = Object.keys(jsonData[0] || {});
+        parsedContent = jsonData.slice(0, 10).map(obj => headers.map(h => obj[h]));
+      } else {
+        parsedContent = [['JSON Object'], [JSON.stringify(jsonData, null, 2).slice(0, 1000)]];
+      }
+    } catch (e) {
+      parsedContent = [['Raw JSON'], [text.slice(0, 1000)]];
+    }
+  } else {
+    parsedContent = lines.map(line => [line]);
+  }
+  
+  return {
+    name: file.name,
+    type: fileExtension,
+    sheets: [{
+      name: file.name,
+      headers,
+      sampleRows: parsedContent
+    }],
+    _originalFileContent: new TextEncoder().encode(text)
+  };
+}
+
+/**
+ * Read file as text
+ */
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result);
+    reader.onerror = reject;
+    reader.readAsText(file);
+  });
 }
 
 /**

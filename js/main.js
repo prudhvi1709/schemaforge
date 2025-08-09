@@ -10,7 +10,6 @@ import {
   streamChatResponse,
   resetChatHistory,
 } from "./llm-service.js";
-import { handleDbtRuleChat } from "./dbt-generation.js";
 import {
   renderResults,
   renderSchemaResults,
@@ -33,6 +32,17 @@ let fileData = null;
 let schemaData = null;
 let dbtRulesData = null;
 let llmConfig = null;
+let chatAttachedFile = null;
+
+/**
+ * Get the currently selected model
+ * @returns {String} Selected model name
+ */
+function getSelectedModel() {
+  const savedModel = localStorage.getItem('selectedModel');
+  const selectElement = document.getElementById("model-select");
+  return selectElement ? selectElement.value : (savedModel || 'gpt-4.1-mini');
+}
 
 // Initialize the application
 async function init() {
@@ -99,6 +109,9 @@ function setupEventListeners() {
   if (chatFormFloating) {
     chatFormFloating.addEventListener("submit", handleChatSubmit);
   }
+
+  // Chat file attachment listeners
+  setupChatFileListeners();
   
   // Sample datasets button listener
   const sampleDatasetsBtn = document.getElementById("sample-datasets-btn");
@@ -119,6 +132,10 @@ function loadPromptsIntoTextareas() {
   const prompts = getCurrentPrompts();
   document.getElementById("schema-prompt").value = prompts.schema;
   document.getElementById("dbt-prompt").value = prompts.dbtRules;
+  
+  // Load saved model selection or default to gpt-4.1-mini
+  const savedModel = localStorage.getItem('selectedModel') || 'gpt-4.1-mini';
+  document.getElementById("model-select").value = savedModel;
 }
 
 /**
@@ -127,6 +144,7 @@ function loadPromptsIntoTextareas() {
 function handleSavePrompts() {
   const schemaPrompt = document.getElementById("schema-prompt").value.trim();
   const dbtPrompt = document.getElementById("dbt-prompt").value.trim();
+  const selectedModel = document.getElementById("model-select").value;
 
   if (!schemaPrompt || !dbtPrompt) {
     updateStatus("Please fill in both prompts before saving", "warning");
@@ -138,7 +156,10 @@ function handleSavePrompts() {
     dbtRules: dbtPrompt,
   });
 
-  updateStatus("Custom prompts saved successfully", "success");
+  // Save selected model to localStorage
+  localStorage.setItem('selectedModel', selectedModel);
+
+  updateStatus("Custom prompts and model selection saved successfully", "success");
 }
 
 /**
@@ -147,7 +168,10 @@ function handleSavePrompts() {
 function handleResetPrompts() {
   resetPrompts();
   loadPromptsIntoTextareas();
-  updateStatus("Prompts reset to default", "info");
+  // Reset model selection to default
+  document.getElementById("model-select").value = 'gpt-4.1-mini';
+  localStorage.setItem('selectedModel', 'gpt-4.1-mini');
+  updateStatus("Prompts and model selection reset to default", "info");
 }
 
 /**
@@ -155,13 +179,60 @@ function handleResetPrompts() {
  */
 function handleResetChat() {
   resetChatHistory();
+  clearChatFile();
   
   const chatMessagesFloating = document.getElementById("chat-messages-floating");
-  if (chatMessagesFloating) {
-    chatMessagesFloating.innerHTML = '';
-  }
+  if (chatMessagesFloating) render(html``, chatMessagesFloating);
   
   updateStatus("Chat history has been reset", "info");
+}
+
+/**
+ * Setup chat file attachment listeners
+ */
+function setupChatFileListeners() {
+  const elements = {
+    attachBtn: document.getElementById("chat-attach-btn"),
+    fileInput: document.getElementById("chat-file-input"),
+    dropZone: document.getElementById("chat-drop-zone"),
+    fileRemove: document.getElementById("chat-file-remove")
+  };
+
+  elements.attachBtn?.addEventListener("click", () => elements.fileInput.click());
+  elements.fileInput?.addEventListener("change", (e) => e.target.files[0] && handleChatFileSelect(e.target.files[0]));
+  elements.fileRemove?.addEventListener("click", clearChatFile);
+
+  // Drag and drop with consolidated handler
+  elements.dropZone?.addEventListener("dragover", handleDragOver);
+  elements.dropZone?.addEventListener("dragleave", handleDragLeave);
+  elements.dropZone?.addEventListener("drop", handleDrop);
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  e.currentTarget.classList.add("border-primary");
+}
+
+function handleDragLeave(e) {
+  e.currentTarget.classList.remove("border-primary");
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove("border-primary");
+  e.dataTransfer.files[0] && handleChatFileSelect(e.dataTransfer.files[0]);
+}
+
+function handleChatFileSelect(file) {
+  chatAttachedFile = file;
+  document.getElementById("chat-file-name").textContent = file.name;
+  document.getElementById("chat-file-preview").classList.remove("d-none");
+}
+
+function clearChatFile() {
+  chatAttachedFile = null;
+  document.getElementById("chat-file-preview").classList.add("d-none");
+  document.getElementById("chat-file-input").value = '';
 }
 
 
@@ -176,7 +247,7 @@ async function loadSampleDatasets() {
   const datasets = config.demos || [];
   
   // Create cards for each dataset
-  const cardsHTML = datasets.map(dataset => `
+  const cardsTemplate = html`${datasets.map(dataset => html`
     <div class="col-md-6 col-lg-4 mb-3">
       <div class="card h-100 sample-dataset-card" data-url="${dataset.href}" data-title="${dataset.title}" style="cursor: pointer; transition: transform 0.2s;">
         <div class="card-body">
@@ -185,9 +256,9 @@ async function loadSampleDatasets() {
         </div>
       </div>
     </div>
-  `).join('');
+  `)}`;
   
-  container.innerHTML = cardsHTML;
+  render(cardsTemplate, container);
   
   // Add click event listeners to the cards
   const cards = container.querySelectorAll('.sample-dataset-card');
@@ -244,7 +315,7 @@ async function handleSampleDatasetClick(event) {
         renderRelationships(partialData);
         renderJoinsAndModeling(partialData);
       }
-    });
+    }, getSelectedModel());
     
     if (!schemaData.relationships) schemaData.relationships = [];
     renderSchemaResults(schemaData);
@@ -405,7 +476,7 @@ async function handleFileUpload(event) {
         renderRelationships(partialData);
         renderJoinsAndModeling(partialData);
       }
-    });
+    }, getSelectedModel());
 
     // Ensure relationships array exists in final data
     if (!schemaData.relationships) {
@@ -457,7 +528,8 @@ async function handleGenerateDbtRules() {
         if (partialData) {
           renderResults(schemaData, partialData);
         }
-      }
+      },
+      getSelectedModel()
     );
 
     // Show chat button and hide generate DBT button
@@ -531,20 +603,38 @@ async function handleChatSubmit(event) {
   const chatInput = document.getElementById("chat-input-floating");
   const userMessage = chatInput.value.trim();
 
-  if (!userMessage || !fileData || !llmConfig) return;
+  if (!userMessage || !llmConfig) return;
+
+  let attachmentData = null;
+  let displayMessage = userMessage;
+
+  // Process attached file if exists
+  if (chatAttachedFile) {
+    try {
+      attachmentData = await parseFile(chatAttachedFile);
+      displayMessage += ` [Attached: ${chatAttachedFile.name}]`;
+    } catch (error) {
+      renderChatMessage("system", `Error reading file: ${error.message}`);
+      return;
+    }
+  }
 
   // Add user message to chat
-  renderChatMessage("user", userMessage);
+  renderChatMessage("user", displayMessage);
   chatInput.value = "";
+
+  // Clear attachment after sending
+  if (chatAttachedFile) clearChatFile();
 
   setLoading("chat-floating", true);
 
   try {
     // Prepare context for the LLM
     const context = {
-      fileData,
+      fileData: fileData || attachmentData,
       schema: schemaData,
       dbtRules: dbtRulesData,
+      attachedFile: attachmentData
     };
 
     // Create a placeholder for the assistant's response
@@ -582,7 +672,8 @@ async function handleChatSubmit(event) {
           const chatContainer = document.getElementById("chat-messages-floating");
           chatContainer.scrollTop = chatContainer.scrollHeight;
         }
-      }
+      },
+      getSelectedModel()
     );
 
     // Remove the placeholder if it still exists (it might have been removed already for DBT rule requests)
@@ -669,22 +760,13 @@ function updateStatus(message, type = "info") {
 }
 
 function setLoading(action, isLoading) {
-  let spinner, button;
-  
-  if (action === "chat-floating") {
-    spinner = document.getElementById("chat-spinner-floating");
-    button = spinner.closest("button");
-  } else {
-    spinner = document.getElementById(`${action}-spinner`);
-    button = spinner.closest("button");
-  }
+  const spinnerId = action === "chat-floating" ? "chat-spinner-floating" : `${action}-spinner`;
+  const spinner = document.getElementById(spinnerId);
+  const button = spinner?.closest("button");
 
-  if (isLoading) {
-    spinner.classList.remove("d-none");
-    button.disabled = true;
-  } else {
-    spinner.classList.add("d-none");
-    button.disabled = false;
+  if (spinner && button) {
+    spinner.classList.toggle("d-none", !isLoading);
+    button.disabled = isLoading;
   }
 }
 
@@ -773,8 +855,9 @@ function expandAllCards(prefix) {
   });
 }
 
-// Make the function globally available
+// Make functions globally available
 window.expandAllCards = expandAllCards;
+window.getSelectedModel = getSelectedModel;
 
 // Initialize the application
 document.addEventListener("DOMContentLoaded", init);

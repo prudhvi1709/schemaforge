@@ -55,14 +55,15 @@ export function resetChatHistory() {
  * @param {Object} fileData - Parsed file data with headers and samples
  * @param {Object} llmConfig - LLM provider configuration
  * @param {Function} onUpdate - Callback function for streaming updates
+ * @param {String} model - Model to use (optional, defaults to gpt-4.1-mini)
  * @returns {Object} Generated schema information
  */
-export async function generateSchema(fileData, llmConfig, onUpdate) {
+export async function generateSchema(fileData, llmConfig, onUpdate, model = "gpt-4.1-mini") {
   try {
     const prompt = createSchemaPrompt(fileData);
     
     const body = {
-      model: "gpt-4.1-mini",
+      model: model,
       stream: true,
       messages: [
         {
@@ -117,9 +118,10 @@ export async function generateSchema(fileData, llmConfig, onUpdate) {
  * @param {String} userMessage - User's message
  * @param {Object} llmConfig - LLM provider configuration
  * @param {Function} onUpdate - Callback function for streaming updates
+ * @param {String} model - Model to use (optional, defaults to gpt-4.1-mini)
  * @returns {String} Final complete response
  */
-export async function streamChatResponse(context, userMessage, llmConfig, onUpdate) {
+export async function streamChatResponse(context, userMessage, llmConfig, onUpdate, model = "gpt-4.1-mini") {
   try {
     // Add user message to chat history
     chatHistory.push({
@@ -136,21 +138,30 @@ export async function streamChatResponse(context, userMessage, llmConfig, onUpda
     
     if (potentiallyDbtRelated) {
       // Use the specialized DBT rule handler from the dbt-generation.js module
-      const result = await handleDbtRuleChat(context, userMessage, llmConfig, onUpdate);
+      const result = await handleDbtRuleChat(context, userMessage, llmConfig, onUpdate, model);
       finalResponse = result.finalResponse;
     } else {
       // Standard conversation flow
+      const systemContent = [
+        "You are a helpful assistant specializing in data analysis, schema design, and DBT rules. Answer questions about the uploaded data file, schema, or DBT rules.",
+        context.attachedFile && `The user has attached a new file: ${context.attachedFile.name}. Here's the data: ${JSON.stringify(context.attachedFile)}.`,
+        (context.fileData || context.schema || context.dbtRules) && `Here's information about the existing data context: ${JSON.stringify({
+          fileData: context.fileData,
+          schema: context.schema,
+          dbtRules: context.dbtRules
+        })}.`
+      ].filter(Boolean).join(" ");
+      
       const messages = [
         {
           role: "system",
-          content: `You are a helpful assistant specializing in data analysis, schema design, and DBT rules. Answer questions about the uploaded data file, schema, or DBT rules. 
-          Here's information about the data: ${JSON.stringify(context)}.`
+          content: systemContent
         },
         ...chatHistory
       ];
       
       const body = {
-        model: "gpt-4.1-mini",
+        model: model,
         stream: true,
         messages: messages
       };

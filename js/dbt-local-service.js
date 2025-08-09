@@ -37,6 +37,7 @@ function createDbtLocalZip(schemaData, dbtRulesData, updateStatus, fileData) {
 
     createDbtProjectStructure(zip, datasetName, dbtRulesData, schemaData);
     zip.file("setup_dbt.sh", createSetupScript(datasetFileName, datasetName));
+    zip.file("convert.py", createConvertPyScript(datasetFileName));
     addDocumentationFiles(zip, schemaData, dbtRulesData);
     zip.file("README.md", createReadmeFile(datasetName));
 
@@ -203,32 +204,12 @@ function deduplicateTests(tests) {
   });
 }
 
-function createSetupScript(datasetFileName, datasetName) {
-  return `#!/bin/bash
-set -e
-echo "🔧 Setting up DBT local development environment..."
+function createConvertPyScript(datasetFileName) {
+  return `# /// script
+# requires-python = '>=3.12'
+# dependencies = ['pandas', 'openpyxl', 'duckdb']
+# ///
 
-check_command() {
-    if ! command -v $1 &> /dev/null; then
-        echo "❌ Error: $1 is not installed. Please install it first."
-        exit 1
-    fi
-}
-
-echo "📋 Checking prerequisites..."
-check_command python3
-check_command pip
-
-if ! command -v dbt &> /dev/null; then
-    echo "📦 Installing DBT..."
-    pip install dbt-core dbt-duckdb
-fi
-
-echo "📦 Installing required Python packages..."
-pip install pandas openpyxl duckdb
-
-echo "🔄 Converting dataset to CSV format..."
-python3 -c "
 import pandas as pd
 import os
 import re
@@ -254,34 +235,75 @@ else:
 
 df.to_csv(output_csv, index=False)
 print(f'✅ Dataset converted and saved to {output_csv}')
-print(f'📊 Dataset shape: {df.shape[0]} rows, {df.shape[1]} columns')
-"
+print(f'📊 Dataset shape: {df.shape[0]} rows, {df.shape[1]} columns')`;
+}
 
-echo "🎯 Initializing DBT project..."
+function createSetupScript(datasetFileName, datasetName) {
+  return `#!/bin/bash
+set -e
+
+# Create log file with timestamp
+LOG_FILE="schemaforge.$(date +%Y-%m-%d-%H-%M-%S).log"
+echo "📝 Logging output to: $LOG_FILE"
+
+# Function to log both to terminal and file
+log_and_echo() {
+    echo "$1" | tee -a "$LOG_FILE"
+}
+
+# Start logging
+{
+    echo "=== SchemaForge DBT Setup Log ==="
+    echo "Started at: $(date)"
+    echo "Dataset: $datasetName"
+    echo "==============================="
+    echo
+} > "$LOG_FILE"
+
+log_and_echo "🔧 Setting up DBT local development environment..."
+
+if ! command -v uv &> /dev/null; then
+    log_and_echo "❌ Error: uv is not installed. Please install it first."
+    exit 1
+fi
+
+log_and_echo "🔄 Converting dataset to CSV format..."
+uv run convert.py 2>&1 | tee -a "$LOG_FILE"
+
+log_and_echo "🎯 Initializing DBT project..."
 export DBT_PROFILES_DIR=$(pwd)
 
-echo "📦 Installing DBT dependencies..."
-dbt deps
+export dbt='uvx --with dbt-core,dbt-duckdb dbt'
 
-echo "🔗 Testing DBT connection..."
-dbt debug
+log_and_echo "📦 Installing DBT dependencies..."
+$dbt deps 2>&1 | tee -a "$LOG_FILE"
 
-echo "🌱 Loading seeds into database..."
-dbt seed
+log_and_echo "🔗 Testing DBT connection..."
+$dbt debug 2>&1 | tee -a "$LOG_FILE"
 
-echo "🏗️ Running DBT models..."
-dbt run
+log_and_echo "🌱 Loading seeds into database..."
+$dbt seed 2>&1 | tee -a "$LOG_FILE"
 
-echo "🧪 Running DBT tests..."
-dbt test
+log_and_echo "🏗️ Running DBT models..."
+$dbt run 2>&1 | tee -a "$LOG_FILE"
 
-echo "📖 Generating DBT documentation..."
-dbt docs generate
+log_and_echo "🧪 Running DBT tests..."
+$dbt test 2>&1 | tee -a "$LOG_FILE"
 
-echo "🎉 DBT local development setup complete!"
-echo "📁 Project structure created with ${datasetName}.duckdb database"
-echo "🚀 Run 'dbt docs serve' to view documentation"
-`;
+log_and_echo "📖 Generating DBT documentation..."
+$dbt docs generate 2>&1 | tee -a "$LOG_FILE"
+
+{
+    echo
+    echo "==============================="
+    echo "Completed at: $(date)"
+    echo "==============================="
+} >> "$LOG_FILE"
+
+log_and_echo "🎉 DBT local development setup complete!"
+log_and_echo "📁 Project structure created with ${datasetName}.duckdb database"
+log_and_echo "🚀 Run 'dbt docs serve' to view documentation"
+log_and_echo "📝 Full log saved to: $LOG_FILE"`;
 }
 
 function addDocumentationFiles(zip, schemaData, dbtRulesData) {

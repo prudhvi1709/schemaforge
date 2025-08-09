@@ -7,14 +7,15 @@ import { asyncLLM } from "https://cdn.jsdelivr.net/npm/asyncllm@2";
  * @param {Object} schemaData - Generated schema information
  * @param {Object} llmConfig - LLM provider configuration
  * @param {Function} onUpdate - Callback function for streaming updates
+ * @param {String} model - Model to use (optional, defaults to gpt-4.1-mini)
  * @returns {Object} Generated DBT rules with summary
  */
-export async function generateDbtRules(schemaData, llmConfig, onUpdate) {
+export async function generateDbtRules(schemaData, llmConfig, onUpdate, model = "gpt-4.1-mini") {
   try {
     const prompt = createDbtRulesPrompt(schemaData);
     
     const body = {
-      model: "gpt-4.1-mini",
+      model: model,
       stream: true,
       messages: [
         {
@@ -78,7 +79,7 @@ export async function generateDbtRules(schemaData, llmConfig, onUpdate) {
  * @param {Function} onUpdate - Update callback for streaming
  * @returns {Object} - Contains finalResponse and any updated rules
  */
-export async function handleDbtRuleChat(context, userMessage, llmConfig, onUpdate) {
+export async function handleDbtRuleChat(context, userMessage, llmConfig, onUpdate, model = "gpt-4.1-mini") {
   try {
     // System prompt that instructs the LLM how to handle rule modifications
     const messages = [
@@ -110,7 +111,7 @@ Here's information about the data context: ${JSON.stringify(context)}.`
     ];
     
     const body = {
-      model: "gpt-4.1-mini",
+      model: model,
       stream: true,
       messages: messages
     };
