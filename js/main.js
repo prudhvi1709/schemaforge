@@ -20,6 +20,7 @@ import {
   renderChatMessage,
   showDbtRuleLoadingIndicator,
 } from "./ui.js";
+import { renderDataIngestion } from "./data-ingestion.js";
 import { exportToZip } from "./export-service.js";
 import { exportDbtLocalZip } from "./dbt-local-service.js";
 import { unsafeHTML } from "lit-html/directives/unsafe-html";
@@ -34,6 +35,9 @@ let dbtRulesData = null;
 let llmConfig = null;
 let chatAttachedFile = null;
 
+// Make current file data available globally for data ingestion
+window.currentFileData = null;
+
 /**
  * Get the currently selected model
  * @returns {String} Selected model name
@@ -42,6 +46,14 @@ function getSelectedModel() {
   const savedModel = localStorage.getItem('selectedModel');
   const selectElement = document.getElementById("model-select");
   return selectElement ? selectElement.value : (savedModel || 'gpt-4.1-mini');
+}
+
+/**
+ * Get current LLM configuration
+ * @returns {Object} LLM configuration
+ */
+function getLLMConfig() {
+  return llmConfig;
 }
 
 // Initialize the application
@@ -58,10 +70,6 @@ function setupEventListeners() {
     uploadForm.addEventListener("submit", handleFileUpload);
   }
   
-  const exportBtn = document.getElementById("export-btn");
-  if (exportBtn) {
-    exportBtn.addEventListener("click", handleExport);
-  }
   
   const runDbtLocallyBtn = document.getElementById("run-dbt-locally-btn");
   if (runDbtLocallyBtn) {
@@ -295,6 +303,7 @@ async function handleSampleDatasetClick(event) {
   
   try {
     fileData = await parseFileFromUrl(url, title);
+    window.currentFileData = fileData;
     document.getElementById("results-container").classList.remove("d-none");
     
     schemaData = {
@@ -319,6 +328,11 @@ async function handleSampleDatasetClick(event) {
     
     if (!schemaData.relationships) schemaData.relationships = [];
     renderSchemaResults(schemaData);
+    
+    // Store schema data globally for export
+    window.currentSchemaData = schemaData;
+    
+    renderDataIngestion(schemaData);
     document.getElementById("generate-dbt-btn").classList.remove("d-none");
     updateStatus(`Schema generation complete for ${title}!`, "success");
   } catch (error) {
@@ -445,6 +459,9 @@ async function handleFileUpload(event) {
   try {
     // Parse the file to extract headers and sample data
     fileData = await parseFile(file);
+    
+    // Store file data globally for data ingestion
+    window.currentFileData = fileData;
 
     // Show results container early to display streaming content
     document.getElementById("results-container").classList.remove("d-none");
@@ -485,6 +502,12 @@ async function handleFileUpload(event) {
 
     // After streaming is complete, render the full results including the diagram
     renderSchemaResults(schemaData);
+    
+    // Store schema data globally for export
+    window.currentSchemaData = schemaData;
+    
+    // Render data ingestion interface
+    renderDataIngestion(schemaData);
 
     // Show generate DBT rules button
     document.getElementById("generate-dbt-btn").classList.remove("d-none");
@@ -532,6 +555,9 @@ async function handleGenerateDbtRules() {
       getSelectedModel()
     );
 
+    // Store DBT data globally for export
+    window.currentDbtRulesData = dbtRulesData;
+
     // Show chat button and hide generate DBT button
     document.getElementById("chat-float-btn").classList.remove("d-none");
     document.getElementById("generate-dbt-btn").classList.add("d-none");
@@ -544,14 +570,6 @@ async function handleGenerateDbtRules() {
   }
 }
 
-function handleExport() {
-  if (!schemaData) {
-    updateStatus("No data available to export", "warning");
-    return;
-  }
-  
-  exportToZip(schemaData, dbtRulesData, updateStatus, fileData);
-}
 
 /**
  * Handle run DBT locally button click
@@ -858,6 +876,8 @@ function expandAllCards(prefix) {
 // Make functions globally available
 window.expandAllCards = expandAllCards;
 window.getSelectedModel = getSelectedModel;
+window.getLLMConfig = getLLMConfig;
+window.handleRunDbtLocally = handleRunDbtLocally;
 
 // Initialize the application
 document.addEventListener("DOMContentLoaded", init);
