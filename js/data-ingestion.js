@@ -1,5 +1,4 @@
 import { html, render } from 'lit-html';
-import { streamChatResponse } from './llm-service.js';
 import { asyncLLM } from "https://cdn.jsdelivr.net/npm/asyncllm@2";
 import { parse } from "https://cdn.jsdelivr.net/npm/partial-json@0.1.7/+esm";
 
