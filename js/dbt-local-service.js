@@ -229,14 +229,12 @@ function deduplicateTests(tests) {
 function createConvertPyScript(datasetFileName) {
   return `# /// script
 # requires-python = '>=3.12'
-# dependencies = ['pandas>=2.0.0', 'openpyxl>=3.1.0', 'xlrd>=2.0.0', 'duckdb>=0.8.0']
+# dependencies = ['pandas', 'openpyxl', 'duckdb']
 # ///
 
 import pandas as pd
 import os
 import re
-import shutil
-from pathlib import Path
 
 dataset_file = '${datasetFileName}'
 original_name = dataset_file.replace('dataset-', '').replace('.xlsx', '').replace('.csv', '')
@@ -245,76 +243,21 @@ sanitized_name = re.sub(r'^[0-9]+', r'data_\\g<0>', sanitized_name)
 sanitized_name = re.sub(r'_{2,}', '_', sanitized_name)
 sanitized_name = sanitized_name.strip('_')
 
-# Create both data directory and seeds directory for DBT
-data_dir = 'converted_data'
-seeds_dir = 'seeds'
+output_csv = f'seeds/{sanitized_name}.csv'
+print(f'Converting {dataset_file} to {output_csv}...')
 
-print(f'Converting {dataset_file} to CSV format(s)...')
-os.makedirs(data_dir, exist_ok=True)
-os.makedirs(seeds_dir, exist_ok=True)
+os.makedirs('seeds', exist_ok=True)
 
 if dataset_file.lower().endswith('.csv'):
     df = pd.read_csv(dataset_file)
-    # Save to both directories
-    data_output = f'{data_dir}/{sanitized_name}.csv'
-    seeds_output = f'{seeds_dir}/{sanitized_name}.csv'
-    
-    df.to_csv(data_output, index=False)
-    df.to_csv(seeds_output, index=False)
-    
-    print(f'✅ Dataset converted and saved to:')
-    print(f'   📁 {data_output}')
-    print(f'   📁 {seeds_output} (for DBT)')
-    print(f'📊 Dataset shape: {df.shape[0]} rows, {df.shape[1]} columns')
-
 elif dataset_file.lower().endswith(('.xlsx', '.xls')):
-    # Handle Excel files with multiple sheets
-    excel_file = pd.ExcelFile(dataset_file)
-    sheet_names = excel_file.sheet_names
-    
-    print(f'📋 Found {len(sheet_names)} sheet(s): {", ".join(sheet_names)}')
-    
-    if len(sheet_names) == 1:
-        # Single sheet - use original naming
-        df = pd.read_excel(dataset_file, sheet_name=sheet_names[0])
-        data_output = f'{data_dir}/{sanitized_name}.csv'
-        seeds_output = f'{seeds_dir}/{sanitized_name}.csv'
-        
-        df.to_csv(data_output, index=False)
-        df.to_csv(seeds_output, index=False)
-        
-        print(f'✅ Sheet "{sheet_names[0]}" converted and saved to:')
-        print(f'   📁 {data_output}')
-        print(f'   📁 {seeds_output} (for DBT)')
-        print(f'📊 Dataset shape: {df.shape[0]} rows, {df.shape[1]} columns')
-    else:
-        # Multiple sheets - create separate CSV for each sheet
-        for i, sheet_name in enumerate(sheet_names, 1):
-            df = pd.read_excel(dataset_file, sheet_name=sheet_name)
-            # Sanitize sheet name for filename
-            sheet_sanitized = re.sub(r'[^a-zA-Z0-9_]', '_', sheet_name)
-            sheet_sanitized = re.sub(r'^[0-9]+', r'data_\\g<0>', sheet_sanitized)
-            sheet_sanitized = re.sub(r'_{2,}', '_', sheet_sanitized).strip('_')
-            
-            # Use table1, table2, etc. naming for clarity
-            table_name = f'table{i}_{sheet_sanitized}'
-            data_output = f'{data_dir}/{table_name}.csv'
-            seeds_output = f'{seeds_dir}/{table_name}.csv'
-            
-            df.to_csv(data_output, index=False)
-            df.to_csv(seeds_output, index=False)
-            
-            print(f'✅ Sheet "{sheet_name}" converted and saved as:')
-            print(f'   📁 {data_output}')
-            print(f'   📁 {seeds_output} (for DBT)')
-            print(f'📊 Sheet shape: {df.shape[0]} rows, {df.shape[1]} columns')
-
+    df = pd.read_excel(dataset_file)
 else:
     raise ValueError(f'Unsupported file format: {dataset_file}')
 
-print(f'🎉 Conversion complete!')
-print(f'📁 Data files: Check the {data_dir}/ directory')
-print(f'📁 DBT seeds: Check the {seeds_dir}/ directory')`;
+df.to_csv(output_csv, index=False)
+print(f'✅ Dataset converted and saved to {output_csv}')
+print(f'📊 Dataset shape: {df.shape[0]} rows, {df.shape[1]} columns')`;
 }
 
 function createSetupScript(datasetFileName, datasetName) {

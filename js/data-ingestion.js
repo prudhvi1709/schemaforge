@@ -6,7 +6,7 @@ import { parse } from "https://cdn.jsdelivr.net/npm/partial-json@0.1.7/+esm";
 const SUPPORTED_SOURCES = [
   { value: 'csv', label: 'CSV File' },
   { value: 'excel', label: 'Excel File' },
-  { value: 'sql', label: 'SQL Database (.db)' },
+  { value: 'db', label: 'SQLite Database' },
   { value: 'parquet', label: 'Parquet File' },
   { value: 'json', label: 'JSON File' }
 ];
@@ -14,7 +14,7 @@ const SUPPORTED_SOURCES = [
 const SUPPORTED_DESTINATIONS = [
   { value: 'csv', label: 'CSV File' },
   { value: 'excel', label: 'Excel File' },
-  { value: 'sql', label: 'SQL Database (.db)' },
+  { value: 'db', label: 'SQLite Database' },
   { value: 'parquet', label: 'Parquet File' },
   { value: 'json', label: 'JSON File' }
 ];
@@ -261,28 +261,22 @@ ${JSON.stringify(schemaInfo, null, 2)}
 **Relationships**:
 ${JSON.stringify(relationships, null, 2)}
 
-Please generate two Python scripts following this conversion workflow:
+Please generate two Python scripts:
 
-**Workflow**: Uploaded File → Source Format → Destination Format
-
-1. **convert_to_source.py** - Converts uploaded file to the selected source format (${sourceType})
-2. **convert_to_destination.py** - Converts from source format (${sourceType}) to destination format (${destType})
+1. **convert_to_source.py** - Converts uploaded file to the source format
+2. **convert_to_destination.py** - Converts from source to destination format
 
 Requirements:
 - Use uv-style inline script requirements at the top of each file in this format:
   # /// script
   # requires-python = '>=3.12'
-  # dependencies = ['pandas>=2.0.0', 'numpy>=1.24.0', 'openpyxl>=3.1.0', 'xlrd>=2.0.0', 'pyarrow>=12.0.0', 'sqlalchemy>=2.0.0', 'duckdb>=0.8.0', 'other-package>=version']
+  # dependencies = ['pandas>=2.0.0', 'numpy>=1.24.0', 'other-package>=version', 'openpyxl>=3.1.5' ]
   # ///
-- **CRITICAL: For Excel files, handle each sheet as a separate table/file**
-- **CRITICAL: Create output directory structure (e.g., 'converted_data/' or 'source_data/' and 'destination_data/')**
-- **CRITICAL: For SQL database files (.db format), use SQLite/DuckDB to read tables directly**
-- **CRITICAL: For SQL files with INSERT statements, parse and extract data from INSERT VALUES clauses without executing them - DO NOT try to execute INSERT statements against DuckDB**
-- When processing Excel: Read all sheets and save each as separate files in organized directories
-- When creating Excel destination: Combine multiple source files into sheets if applicable
-- For .db files: Connect to database and read all tables using pandas.read_sql() or DuckDB
-- For .sql files: Extract table names and data directly from INSERT INTO tablename VALUES(...) statements using regex parsing
-- For multi-table outputs: Create structured directory with clear naming (table1.csv, table2.csv, etc.)
+- Always add all the dependencies to the script (inline).
+- For Excel files, automatically handle multiple sheets using sheet names as table names
+- DO NOT require a --table parameter; automatically process all sheets in Excel files
+- Use argparse with only the input file as a required positional argument
+- For single-sheet files (CSV, JSON, etc.), use the filename (without extension) as the table name
 - Include proper error handling and logging
 - Add data validation where appropriate
 - Handle different file encodings
@@ -292,18 +286,15 @@ Requirements:
 - Include progress indicators for large files
 - Use modern Python features and type hints
 - Make scripts runnable with: uv run script.py
-- Include ALL necessary dependencies inline (pandas, openpyxl, xlrd, pyarrow, sqlalchemy, duckdb, etc.)
-- **DO NOT save to 'seeds' directory - create proper data directories**
 
 Return the response as JSON with this structure:
 {
-  "sourceScript": "# /// script\\n# requires-python = '>=3.12'\\n# dependencies = ['pandas>=2.0.0', 'numpy>=1.24.0', 'openpyxl>=3.1.0', 'xlrd>=2.0.0', 'pyarrow>=12.0.0', 'sqlalchemy>=2.0.0', 'duckdb>=0.8.0']\\n# ///\\n\\n# Python code that converts uploaded file to ${sourceType} format with proper directory structure...",
-  "destScript": "# /// script\\n# requires-python = '>=3.12'\\n# dependencies = ['pandas>=2.0.0', 'numpy>=1.24.0', 'openpyxl>=3.1.0', 'xlrd>=2.0.0', 'pyarrow>=12.0.0', 'sqlalchemy>=2.0.0', 'duckdb>=0.8.0']\\n# ///\\n\\n# Python code that converts ${sourceType} format to ${destType} format...",
+  "sourceScript": "# /// script\\n# requires-python = '>=3.12'\\n# dependencies = ['pandas>=2.0.0', 'numpy>=1.24.0']\\n# ///\\n\\n# Python code for convert_to_source.py...",
+  "destScript": "# /// script\\n# requires-python = '>=3.12'\\n# dependencies = ['pandas>=2.0.0', 'numpy>=1.24.0']\\n# ///\\n\\n# Python code for convert_to_destination.py...",
   "usage": {
-    "sourceScript": "uv run convert_to_source.py input_file.ext [--output-dir source_data]",
-    "destScript": "uv run convert_to_destination.py --source-dir source_data --output-dir destination_data"
-  },
-  "workflow": "Step 1: Run convert_to_source.py with your uploaded file\\nStep 2: Run convert_to_destination.py with the source directory output"
+    "sourceScript": "uv run convert_to_source.py input_file.ext",
+    "destScript": "uv run convert_to_destination.py source_file.ext output_file.ext"
+  }
 }`;
 }
 
@@ -360,22 +351,6 @@ function getScriptsTemplate(conversionData) {
         </button>
       </div>
       <div class="card-body">
-        ${conversionData.workflow ? html`
-          <div class="alert alert-info mb-3">
-            <h6><strong>Conversion Workflow:</strong></h6>
-            <pre style="margin: 0; white-space: pre-line;">${conversionData.workflow}</pre>
-          </div>
-        ` : ''}
-        
-        ${conversionData.usage ? html`
-          <div class="alert alert-secondary mb-3">
-            <h6><strong>Usage Examples:</strong></h6>
-            <p><strong>Step 1 (Source Conversion):</strong></p>
-            <code>${conversionData.usage.sourceScript}</code>
-            <p class="mt-2 mb-1"><strong>Step 2 (Destination Conversion):</strong></p>
-            <code>${conversionData.usage.destScript}</code>
-          </div>
-        ` : ''}
         <ul class="nav nav-tabs" id="${tabId}-tabs" role="tablist">
           <li class="nav-item" role="presentation">
             <button class="nav-link active" id="${sourceTabId}-tab" data-bs-toggle="tab" data-bs-target="#${sourceTabId}" type="button" role="tab" aria-controls="${sourceTabId}" aria-selected="true">
