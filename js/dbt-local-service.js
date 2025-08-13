@@ -94,7 +94,7 @@ function createDbtProjectStructure(zip, datasetName, dbtRulesData, schemaData) {
   if (dbtRulesData.dbtRules) {
     dbtRulesData.dbtRules.forEach(rule => {
       if (rule.modelSql) {
-        const updatedSql = `-- Model for ${rule.tableName}\n${updateSqlForSeeds(rule.modelSql, datasetName)}`;
+        const updatedSql = `-- Model for ${rule.tableName}\n${updateSqlForSeeds(rule.modelSql, rule.tableName)}`;
         modelsDir.file(`${rule.tableName}.sql`, updatedSql);
       }
     });
@@ -104,8 +104,8 @@ function createDbtProjectStructure(zip, datasetName, dbtRulesData, schemaData) {
   zip.folder("seeds");
 }
 
-function updateSqlForSeeds(sql, datasetName) {
-  const seedRef = `{{ ref('${datasetName}') }}`;
+function updateSqlForSeeds(sql, tableName) {
+  const seedRef = `{{ ref('${tableName.toLowerCase()}') }}`;
   const updatedSql = sql.replace(/\{\{\s*ref\(['"]\w+['"]\)\s*\}\}/gi, seedRef)
                         .replace(/FROM\s+[\w_]+(?![\w_])/gi, `FROM ${seedRef}`)
                         .replace(/(LEFT\s+JOIN|RIGHT\s+JOIN|INNER\s+JOIN|JOIN)\s+[\w_]+(?![\w_])/gi, `$1 ${seedRef}`);
@@ -181,7 +181,14 @@ function createSchemaYmlFromRules(dbtRulesData, datasetName, schemaData) {
       });
 
       test.relationships?.forEach(rel => {
-        col.tests.push({ [rel.test]: { to: rel.to, field: rel.field } });
+        col.tests.push({ 
+          [rel.test]: { 
+            arguments: { 
+              to: rel.to, 
+              field: rel.field 
+            }
+          } 
+        });
       });
 
       col.tests = deduplicateTests(col.tests);
@@ -191,9 +198,15 @@ function createSchemaYmlFromRules(dbtRulesData, datasetName, schemaData) {
     if (model.columns.length > 0) schemaObj.models.push(model);
   });
 
-  const seed = { name: datasetName, description: "Source data for analysis", columns: [] };
-
+  // Create separate seed entries for each table/schema
   schemaData.schemas?.forEach(tbl => {
+    const tableName = tbl.tableName.toLowerCase(); // Convert to lowercase for consistency
+    const seed = { 
+      name: tableName, 
+      description: `${tbl.description || `Data for ${tbl.tableName} table`}`, 
+      columns: [] 
+    };
+
     tbl.columns?.forEach(col => {
       const seedCol = { name: col.name, description: col.description || '' };
       
@@ -210,9 +223,11 @@ function createSchemaYmlFromRules(dbtRulesData, datasetName, schemaData) {
       
       seed.columns.push(seedCol);
     });
-  });
 
-  schemaObj.seeds.push(seed);
+    if (seed.columns.length > 0) {
+      schemaObj.seeds.push(seed);
+    }
+  });
   return yaml.dump(schemaObj, { noRefs: true, lineWidth: -1 });
 }
 

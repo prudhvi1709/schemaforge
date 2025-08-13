@@ -282,7 +282,9 @@ Requirements:
 - When creating Excel destination: Combine multiple source files into sheets if applicable
 - For .db files: Connect to database and read all tables using pandas.read_sql() or DuckDB
 - For .sql files: Extract table names and data directly from INSERT INTO tablename VALUES(...) statements using regex parsing
-- For multi-table outputs: Create structured directory with clear naming (table1.csv, table2.csv, etc.)
+- **CRITICAL: Use clean table names without prefixes (e.g., 'patients.csv' not 'table1_Patients.csv')**
+- **CRITICAL: For Excel sheets, use lowercase sheet names as filenames**
+- For multi-table outputs: Create structured directory with clear naming
 - Include proper error handling and logging
 - Add data validation where appropriate
 - Handle different file encodings
