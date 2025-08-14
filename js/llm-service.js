@@ -210,27 +210,38 @@ export async function streamChatResponse(context, userMessage, llmConfig, onUpda
  */
 function createSchemaPrompt(fileData) {
   const template = customPrompts.schema || getDefaultSchemaPrompt();
-  
+
+  // Helper: pick random rows
+  function getRandomRows(rows, count) {
+    const shuffled = rows.slice();
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled.slice(0, count);
+  }
+
   // Prepare sheets data
   const sheetsData = fileData.sheets.map(sheet => {
+    const sampleCount = Math.min(sheet.sampleRows.length, 5); // or any number you want
+    const randomRows = getRandomRows(sheet.sampleRows, sampleCount);
+
     // TSV formatter - convert array of arrays to TSV format
-    const tsvData = sheet.sampleRows.map(row => {
-      // row is an array, not an object, so we map by index
+    const tsvData = randomRows.map(row => {
       return row.map((value, index) => {
         const cellValue = value !== undefined && value !== null ? String(value) : '';
-        // Escape tabs and newlines in values
         return cellValue.replace(/\t/g, ' ').replace(/\n/g, ' ');
       }).join('\t');
     }).join('\n');
-    
+
     return `
 Sheet: ${sheet.name}
 Headers: ${sheet.headers.join('\t')}
-Sample Data (${sheet.sampleRows.length} rows):
+Sample Data (${randomRows.length} rows):
 ${tsvData}
 `;
   }).join('\n');
-  
+
   // Replace template variables
   return template
     .replace(/\$\{fileData\.name\}/g, fileData.name)
