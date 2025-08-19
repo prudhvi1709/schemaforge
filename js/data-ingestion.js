@@ -5,7 +5,7 @@ import { parse } from "https://cdn.jsdelivr.net/npm/partial-json@0.1.7/+esm";
 const SUPPORTED_SOURCES = [
   { value: 'csv', label: 'CSV File' },
   { value: 'excel', label: 'Excel File' },
-  { value: 'db', label: 'SQLite Database' },
+  { value: 'sqlite3', label: 'SQLite Database' },
   { value: 'parquet', label: 'Parquet File' },
   { value: 'json', label: 'JSON File' }
 ];
@@ -13,7 +13,7 @@ const SUPPORTED_SOURCES = [
 const SUPPORTED_DESTINATIONS = [
   { value: 'csv', label: 'CSV File' },
   { value: 'excel', label: 'Excel File' },
-  { value: 'db', label: 'SQLite Database' },
+  { value: 'sqlite3', label: 'SQLite Database' },
   { value: 'parquet', label: 'Parquet File' },
   { value: 'json', label: 'JSON File' }
 ];
