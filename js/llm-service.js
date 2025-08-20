@@ -310,6 +310,9 @@ Please structure your response as a JSON object with the following format:
           "isForeignKey": boolean,
           "qualityObservations": ["observation1", "observation2"],
           "constraints": ["constraint1", "constraint2"],
+          "flags": [
+            { "label": "CUSTOM_FLAG", "class": "bg-secondary" }
+          ],
           "foreignKeyReference": {
             "referencedTable": "table_name",
             "referencedColumn": "column_name",

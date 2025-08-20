@@ -17,8 +17,20 @@ const createBadges = (col) => {
   const badgeConfigs = [
     { condition: col.isPrimaryKey, label: 'PK', class: 'bg-warning text-dark' },
     { condition: col.isForeignKey, label: 'FK', class: 'bg-info' },
-    { condition: col.isPII,        label: 'PII', class: 'bg-danger' }
+    { condition: col.isPII,        label: 'PII', class: 'bg-danger' },
   ];
+
+  // Add data classification badge
+  if (col.dataClassification) {
+    badgeConfigs.push({ condition: true, label: col.dataClassification, class: 'bg-primary' });
+  }
+
+  // Add any additional flags from LLM response
+  if (col.flags) {
+    col.flags.forEach(flag => {
+      badgeConfigs.push({ condition: true, label: flag.label, class: flag.class || 'bg-secondary' });
+    });
+  }
 
   return badgeConfigs
     .filter(b => b.condition)
