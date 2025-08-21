@@ -41,7 +41,7 @@ function getLLMConfig() {
 async function init() {
   setupEventListeners();
   await initLlmConfig();
-  loadPromptsIntoTextareas();
+  await loadPromptsIntoTextareas();
 }
 
 function setupEventListeners() {
@@ -106,8 +106,8 @@ function clearChatFile() {
   document.getElementById("chat-file-input").value = '';
 }
 
-function loadPromptsIntoTextareas() {
-  const prompts = getCurrentPrompts();
+async function loadPromptsIntoTextareas() {
+  const prompts = await getCurrentPrompts();
   document.getElementById("schema-prompt").value = prompts.schema;
   document.getElementById("dbt-prompt").value = prompts.dbtRules;
   const savedModel = localStorage.getItem('selectedModel') || 'gpt-4.1-mini';
@@ -126,9 +126,9 @@ function handleSavePrompts() {
   updateStatus("Custom prompts and model selection saved successfully", "success");
 }
 
-function handleResetPrompts() {
+async function handleResetPrompts() {
   resetPrompts();
-  loadPromptsIntoTextareas();
+  await loadPromptsIntoTextareas();
   document.getElementById("model-select").value = 'gpt-4.1-mini';
   localStorage.setItem('selectedModel', 'gpt-4.1-mini');
   updateStatus("Prompts and model selection reset to default", "info");

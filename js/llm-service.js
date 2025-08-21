@@ -11,6 +11,7 @@ let chatHistory = [];
 import { asyncLLM } from "https://cdn.jsdelivr.net/npm/asyncllm@2";
 import { parse } from "https://cdn.jsdelivr.net/npm/partial-json@0.1.7/+esm";
 import { generateDbtRules, getDbtRulesSummary, handleDbtRuleChat } from "./dbt-generation.js";
+import { loadtxt } from "./utils.js";
 
 // Re-export DBT functions for API compatibility
 export { generateDbtRules, getDbtRulesSummary };
@@ -28,10 +29,10 @@ export function setCustomPrompts(prompts) {
  * Get current prompts (custom or default)
  * @returns {Object} Object containing current schema and dbtRules prompts
  */
-export function getCurrentPrompts() {
+export async function getCurrentPrompts() {
   return {
     schema: customPrompts.schema || getDefaultSchemaPrompt(),
-    dbtRules: customPrompts.dbtRules || getDefaultDbtRulesPrompt()
+    dbtRules: customPrompts.dbtRules || await getDefaultDbtRulesPrompt()
   };
 }
 
@@ -360,13 +361,13 @@ Please structure your response as a JSON object with the following format:
 
 /**
  * Get default DBT rules generation prompt template
- * @returns {String} Default DBT rules prompt
+ * @returns {Promise<String>} Default DBT rules prompt
  */
-function getDefaultDbtRulesPrompt() {
-  // This function is now maintained in dbt-generation.js, but we keep a stub here for API compatibility
-  return `Based on the following schema information with relationships, generate comprehensive DBT rules including models, tests, and configurations.
-
-Schema Data: \${schemaData}
-
-// Full prompt content moved to dbt-generation.js`;
+async function getDefaultDbtRulesPrompt() {
+  try {
+    return await loadtxt('./prompts/dbt-rules-generation.md');
+  } catch (error) {
+    // Fallback to inline prompt if file loading fails
+    return `Based on the following schema information with relationships, generate comprehensive DBT rules including models, tests, and configurations.\n\nSchema Data: \${schemaData}\n\n// Prompt moved to prompts/dbt-rules-generation.md`;
+  }
 }
