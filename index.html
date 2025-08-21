@@ -75,6 +75,11 @@
                     <textarea class="form-control" id="dbt-prompt" rows="8" placeholder="DBT rules generation prompt will be loaded here..."></textarea>
                   </div>
                   <div class="mb-3">
+                    <label for="table-classification-rules" class="form-label"><strong>Table Classification Rules</strong></label>
+                    <textarea class="form-control" id="table-classification-rules" rows="4" placeholder="Enter global rules for table classification (e.g., business logic, categorization criteria, data quality rules)..."></textarea>
+                    <div class="form-text">These rules will be applied to all table descriptions during schema generation.</div>
+                  </div>
+                  <div class="mb-3">
                     <label for="model-select" class="form-label"><strong>AI Model</strong></label>
                     <select class="form-select" id="model-select">
                       <option value="gpt-4.1-mini" selected>gpt-4.1-mini</option>

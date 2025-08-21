@@ -59,6 +59,7 @@ function setupEventListeners() {
     "sample-datasets-btn": { event: "click", handler: handleSampleDatasetsClick }
   };
 
+
   Object.entries(eventMap).forEach(([id, { event, handler }]) => {
     document.getElementById(id)?.addEventListener(event, handler);
   });
@@ -200,6 +201,12 @@ async function handleSampleDatasetClick(event) {
   }
 }
 
+function getGlobalTableRules() {
+  const rulesInput = document.getElementById('table-classification-rules');
+  return rulesInput ? rulesInput.value.trim() : '';
+}
+
+
 async function processFile(data, name = null) {
   fileData = data;
   window.currentFileData = fileData;
@@ -209,6 +216,7 @@ async function processFile(data, name = null) {
   renderSchemaResults(schemaData);
   updateStatus("Generating schema...", "info");
   
+  const globalTableRules = getGlobalTableRules();
   schemaData = await generateSchema(fileData, llmConfig, (partialData) => {
     if (partialData) {
       if (!partialData.relationships) partialData.relationships = [];
@@ -217,7 +225,7 @@ async function processFile(data, name = null) {
       renderRelationships(partialData);
       renderJoinsAndModeling(partialData);
     }
-  }, getSelectedModel());
+  }, getSelectedModel(), globalTableRules);
   
   if (!schemaData.relationships) schemaData.relationships = [];
   renderSchemaResults(schemaData);

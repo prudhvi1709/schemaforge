@@ -56,11 +56,12 @@ export function resetChatHistory() {
  * @param {Object} llmConfig - LLM provider configuration
  * @param {Function} onUpdate - Callback function for streaming updates
  * @param {String} model - Model to use (optional, defaults to gpt-4.1-mini)
+ * @param {String} globalTableRules - Optional global table classification rules
  * @returns {Object} Generated schema information
  */
-export async function generateSchema(fileData, llmConfig, onUpdate, model = "gpt-4.1-mini") {
+export async function generateSchema(fileData, llmConfig, onUpdate, model = "gpt-4.1-mini", globalTableRules = "") {
   try {
-    const prompt = createSchemaPrompt(fileData);
+    const prompt = createSchemaPrompt(fileData, globalTableRules);
     
     const body = {
       model: model,
@@ -206,9 +207,10 @@ export async function streamChatResponse(context, userMessage, llmConfig, onUpda
 /**
  * Create prompt for schema generation
  * @param {Object} fileData - Parsed file data
+ * @param {String} globalTableRules - Optional global table classification rules
  * @returns {String} Formatted prompt for the LLM
  */
-function createSchemaPrompt(fileData) {
+function createSchemaPrompt(fileData, globalTableRules = "") {
   const template = customPrompts.schema || getDefaultSchemaPrompt();
 
   // Helper: pick random rows
@@ -243,10 +245,14 @@ ${tsvData}
   }).join('\n');
 
   // Replace template variables
+  const globalRulesText = globalTableRules ? 
+    `\n\nGLOBAL TABLE CLASSIFICATION RULES:\n${globalTableRules}\n` : '';
+    
   return template
     .replace(/\$\{fileData\.name\}/g, fileData.name)
     .replace(/\$\{fileData\.type\}/g, fileData.type)
-    .replace(/\$\{fileData\.sheets\}/g, sheetsData);
+    .replace(/\$\{fileData\.sheets\}/g, sheetsData)
+    .replace(/\$\{globalTableRules\}/g, globalRulesText);
 }
 
 /**
@@ -259,13 +265,15 @@ function getDefaultSchemaPrompt() {
 File Name: \${fileData.name}
 File Type: \${fileData.type}
 
-\${fileData.sheets}
+\${fileData.sheets}\${globalTableRules}
 
 For each sheet/table, please analyze and provide:
 
+IMPORTANT: If Global Table Classification Rules are provided above, follow these rules when analyzing and classifying all tables. Incorporate these rules into your table descriptions and classifications.
+
 1. **Column Analysis** (for each column):
    - Inferred data type
-   - Column description
+   - Column description (incorporating global classification rules if provided)
    - Whether it might contain PII/sensitive data (true/false)
    - Any data quality observations
    - Suggested constraints or validation rules
@@ -293,7 +301,7 @@ Please structure your response as a JSON object with the following format:
     {
       "sheetName": "Sheet1",
       "tableName": "suggested_table_name",
-      "description": "Description of this table/data",
+      "description": "Description of this table/data (incorporating global classification rules if provided)",
       "tableType": "fact|dimension|lookup|bridge",
       "primaryKey": {
         "columns": ["column1", "column2"],

@@ -32,8 +32,17 @@ const createBadges = (col) => {
     });
   }
 
+  // Filter by condition and deduplicate by label
+  const seenLabels = new Set();
   return badgeConfigs
     .filter(b => b.condition)
+    .filter(b => {
+      if (seenLabels.has(b.label)) {
+        return false;
+      }
+      seenLabels.add(b.label);
+      return true;
+    })
     .map(b => html`<span class="badge ${b.class}">${b.label}</span>`);
 };
 
