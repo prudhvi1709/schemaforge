@@ -65,6 +65,7 @@ function setupEventListeners() {
   });
 
   setupChatFileListeners();
+  setupChatResize();
 }
 
 function setupChatFileListeners() {
@@ -91,6 +92,66 @@ function setupChatFileListeners() {
 
   Object.entries(dragHandlers).forEach(([event, handler]) => {
     elements.dropZone?.addEventListener(event, handler);
+  });
+}
+
+function setupChatResize() {
+  const chatContainer = document.getElementById('chat-container-floating');
+  const handles = chatContainer?.querySelectorAll('.resize-handle');
+  
+  if (!chatContainer || !handles) return;
+
+  handles.forEach(handle => {
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      
+      // Extract direction from single class check
+      const classList = handle.classList;
+      const direction = {
+        n: classList.contains('resize-n') || classList.contains('resize-ne') || classList.contains('resize-nw'),
+        s: classList.contains('resize-s') || classList.contains('resize-se') || classList.contains('resize-sw'),
+        e: classList.contains('resize-e') || classList.contains('resize-se') || classList.contains('resize-ne'),
+        w: classList.contains('resize-w') || classList.contains('resize-sw') || classList.contains('resize-nw')
+      };
+      
+      const startX = e.clientX, startY = e.clientY;
+      const rect = chatContainer.getBoundingClientRect();
+      const startWidth = rect.width, startHeight = rect.height;
+      const startRight = parseFloat(getComputedStyle(chatContainer).right);
+      const startBottom = parseFloat(getComputedStyle(chatContainer).bottom);
+      
+      const constraints = { minWidth: 300, minHeight: 400, maxWidth: innerWidth * 0.8, maxHeight: innerHeight * 0.8 };
+      
+      function doResize(e) {
+        const deltaX = e.clientX - startX, deltaY = e.clientY - startY;
+        
+        let newWidth = direction.e ? startWidth + deltaX : direction.w ? startWidth - deltaX : startWidth;
+        let newHeight = direction.s ? startHeight + deltaY : direction.n ? startHeight - deltaY : startHeight;
+        
+        // Apply constraints and adjust position if needed
+        const constrainDimension = (value, min, max, isReverse, startPos, startDim) => {
+          if (value < min) return { size: min, pos: isReverse ? startPos + startDim - min : startPos };
+          if (value > max) return { size: max, pos: isReverse ? startPos + startDim - max : startPos };
+          return { size: value, pos: isReverse ? startPos + startDim - value : startPos };
+        };
+        
+        const width = constrainDimension(newWidth, constraints.minWidth, constraints.maxWidth, direction.w, startRight, startWidth);
+        const height = constrainDimension(newHeight, constraints.minHeight, constraints.maxHeight, direction.n, startBottom, startHeight);
+        
+        chatContainer.style.width = width.size + 'px';
+        chatContainer.style.height = height.size + 'px';
+        if (direction.w) chatContainer.style.right = width.pos + 'px';
+        if (direction.n) chatContainer.style.bottom = height.pos + 'px';
+      }
+      
+      const stopResize = () => {
+        document.removeEventListener('mousemove', doResize);
+        document.removeEventListener('mouseup', stopResize);
+      };
+      
+      document.addEventListener('mousemove', doResize);
+      document.addEventListener('mouseup', stopResize);
+    });
   });
 }
 
