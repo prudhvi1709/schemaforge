@@ -231,10 +231,19 @@ async function loadSampleDatasets() {
   render(html`${datasets.map(dataset => html`
     <div class="col-md-6 col-lg-4 mb-3">
       <div class="card h-100 sample-dataset-card" data-url="${dataset.href}" data-title="${dataset.title}" 
-           style="cursor: pointer; transition: transform 0.2s;">
+           style="cursor: pointer; transition: transform 0.2s; position: relative;">
         <div class="card-body">
           <h5 class="card-title">${dataset.title}</h5>
           <p class="card-text text-muted">${dataset.body}</p>
+        </div>
+        <div class="card-footer d-flex justify-content-between align-items-center bg-transparent border-0">
+          <small class="text-muted">Click to analyze</small>
+          <button class="btn btn-outline-primary btn-sm view-dataset-btn" 
+                  data-url="${dataset.href}" 
+                  data-title="${dataset.title}"
+                  title="View dataset in browser">
+            <i class="bi bi-eye"></i> View
+          </button>
         </div>
       </div>
     </div>
@@ -249,9 +258,90 @@ async function loadSampleDatasets() {
       });
     });
   });
+  
+  // Add event listeners for view buttons
+  container.querySelectorAll('.view-dataset-btn').forEach(btn => {
+    btn.addEventListener('click', handleViewDatasetClick);
+  });
+}
+
+function handleViewDatasetClick(event) {
+  event.stopPropagation(); // Prevent card click
+  const { url, title } = event.currentTarget.dataset;
+  
+  if (!url) {
+    updateStatus("No URL available for this dataset", "warning");
+    return;
+  }
+  
+  const extension = url.split('.').pop().toLowerCase();
+  
+  if (extension === 'csv') {
+    // For CSV files, show options to user
+    showCsvViewerOptions(url, title);
+  } else {
+    // For other files, use direct viewer
+    const viewerUrl = generateViewerUrl(url, title);
+    window.open(viewerUrl, '_blank', 'noopener,noreferrer');
+    updateStatus(`Opening ${title} in new tab...`, "info");
+  }
+}
+
+function showCsvViewerOptions(csvUrl, title) {
+  const encodedUrl = encodeURIComponent(csvUrl);
+  
+  // Create a modal or alert with multiple viewing options
+  const options = [
+    {
+      name: "📋 View Raw CSV",
+      description: "View the raw CSV file content",
+      url: csvUrl
+    },
+    {
+      name: "📊 Try Office Viewer",
+      description: "Attempt to view with Microsoft Office Web Viewer",
+      url: `https://view.officeapps.live.com/op/view.aspx?src=${encodedUrl}`
+    },
+    {
+      name: "📈 Open in Google Sheets",
+      description: "Import to Google Sheets (requires Google account)",
+      url: `https://docs.google.com/spreadsheets/u/0/create?usp=sheets_web_ug_dm#importurl=${encodedUrl}`
+    }
+  ];
+  
+  // For now, let's use the raw CSV view as the most reliable option
+  window.open(csvUrl, '_blank', 'noopener,noreferrer');
+  updateStatus(`Opening ${title} (CSV) in new tab...`, "info");
+}
+
+function generateViewerUrl(fileUrl, title) {
+  const encodedUrl = encodeURIComponent(fileUrl);
+  
+  // Check file extension to determine viewer
+  const extension = fileUrl.split('.').pop().toLowerCase();
+  
+  switch (extension) {
+    case 'xlsx':
+    case 'xls':
+      // Use Microsoft Office Web Viewer for Excel files
+      return `https://view.officeapps.live.com/op/view.aspx?src=${encodedUrl}`;
+    
+    case 'csv':
+      // CSV files are handled separately in handleViewDatasetClick
+      return fileUrl;
+    
+    default:
+      // For other formats, try Office viewer
+      return `https://view.officeapps.live.com/op/view.aspx?src=${encodedUrl}`;
+  }
 }
 
 async function handleSampleDatasetClick(event) {
+  // Check if the click was on the view button or its children
+  if (event.target.closest('.view-dataset-btn')) {
+    return; // Don't handle card click if view button was clicked
+  }
+  
   const { url, title } = event.currentTarget.dataset;
   
   if (!url || !llmConfig) {
