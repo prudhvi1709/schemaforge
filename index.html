@@ -6,9 +6,12 @@
   <title>SchemaForge</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%230d6efd'><path d='M12,3C7.58,3,4,4.79,4,7v10c0,2.21,3.59,4,8,4s8-1.79,8-4V7C20,4.79,16.42,3,12,3z M12,5c3.87,0,6,1.5,6,2s-2.13,2-6,2s-6-1.5-6-2S8.13,5,12,5z M12,19c-3.87,0-6-1.5-6-2v-2.23c1.61,1.07,3.69,1.77,6,1.77s4.39-0.7,6-1.77V17C18,17.5,15.87,19,12,19z M12,14.54c-3.87,0-6-1.5-6-2v-2.23c1.61,1.07,3.69,1.77,6,1.77s4.39-0.7,6-1.77V12.54C18,13.04,15.87,14.54,12,14.54z M12,10.07c-3.87,0-6-1.5-6-2V7.23c1.61,1.07,3.69,1.77,6,1.77s4.39-0.7,6-1.77v0.85C18,8.58,15.87,10.07,12,10.07z'/></svg>">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" defer></script>
   <!-- GoJS library for entity relationship diagram -->
   <script src="https://unpkg.com/gojs/release/go.js"></script>
+  <!-- XLSX library for Excel file processing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script type="importmap">
     {
       "imports": {
@@ -17,6 +20,14 @@
       }
     }
   </script>
+  <style>
+    /* Comparator specific styles */
+    .mismatch { background-color: var(--bs-danger-bg-subtle) !important; }
+    .match { background-color: var(--bs-success-bg-subtle) !important; }
+    .table-responsive { max-height: 400px; overflow-y: auto; }
+    .clickable-row { cursor: pointer; }
+    .clickable-row:hover { background-color: var(--bs-light-bg-subtle); }
+  </style>
 </head>
 <body>
   <div class="container py-4">
@@ -156,6 +167,9 @@
               <li class="nav-item">
                 <button class="nav-link" data-bs-toggle="tab" data-bs-target="#ingestion-tab">Data Ingestion</button>
               </li>
+              <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#comparator-tab">Data Comparator</button>
+              </li>
             </ul>
             <div class="tab-content mt-3">
               <div class="tab-pane fade show active" id="schema-tab">
@@ -178,6 +192,78 @@
               </div>
               <div class="tab-pane fade" id="ingestion-tab">
                 <div id="ingestion-content"></div>
+              </div>
+              <div class="tab-pane fade" id="comparator-tab">
+                <div id="comparator-content">
+                  <!-- Comparator Content -->
+                  <div class="row">
+                    <div class="col-12">
+                      <h4 class="mb-4">
+                        <i class="bi bi-cpu me-2" style="color: #009ad2;"></i>AI DataMismatch Detector
+                      </h4>
+                      <p class="text-muted mb-4">AI-powered column mapping and mismatch analysis. Upload Excel files and let AI analyze column relationships and data mismatches.</p>
+                      
+                      <!-- Data Source Section for Comparator -->
+                      <div class="card mb-4 border-0 shadow-sm">
+                        <div class="card-header bg-primary text-white">
+                          <h5 class="mb-0"><i class="bi bi-database me-2"></i>Data Source</h5>
+                        </div>
+                        <div class="card-body">
+                          <div id="comparator-file-status" class="mb-3">
+                            <div class="alert alert-info">
+                              <i class="bi bi-info-circle me-2"></i>
+                              Use file data already uploaded in SchemaForge, or upload a new Excel file with multiple sheets for comparison.
+                            </div>
+                          </div>
+                          <div class="d-flex gap-2">
+                            <button id="btn-use-existing-data" class="btn btn-success btn-lg">
+                              <i class="bi bi-database me-2"></i>Use Existing Data
+                            </button>
+                            <button id="btn-upload-new-file" class="btn btn-outline-primary btn-lg">
+                              <i class="bi bi-cloud-upload me-2"></i>Upload New File
+                            </button>
+                          </div>
+                          <div id="new-file-upload" class="mt-3 d-none">
+                            <div class="mb-3">
+                              <input type="file" class="form-control" id="comparator-file-input" accept=".xlsx,.csv">
+                              <div class="form-text">Upload an Excel file (.xlsx) with two or more tabs for comparison.</div>
+                            </div>
+                            <button id="btn-analyze-new-file" class="btn btn-primary btn-lg" disabled>
+                              <i class="bi bi-play-circle me-2"></i>Analyze New File
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <!-- AI Column Mapping & Metadata Section -->
+                      <div id="metadata-section-comparator" class="card mb-4 d-none border-0 shadow-sm">
+                        <div class="card-header bg-success text-white">
+                          <h5 class="mb-0"><i class="bi bi-robot me-2"></i>AI Column Mapping & Metadata</h5>
+                        </div>
+                        <div class="card-body">
+                          <div id="metadata-results-comparator"></div>
+                        </div>
+                      </div>
+                      
+                      <!-- Dynamic Summary Comparison Section -->
+                      <div id="summary-section-comparator" class="card mb-4 d-none border-0 shadow-sm">
+                        <div class="card-header bg-info text-white">
+                          <h5 class="mb-0"><i class="bi bi-bar-chart me-2"></i>Dynamic Summary Comparison & AI Drill-Down</h5>
+                        </div>
+                        <div class="card-body">
+                          <div class="mb-3">
+                            <div id="grouping-keys-comparator"></div>
+                          </div>
+                          <button id="btn-compare-summary-comparator" class="btn btn-success btn-lg mb-3">
+                            <i class="bi bi-calculator me-2"></i>Compare Summaries
+                          </button>
+                          <div id="summary-results-comparator"></div>
+                          <div id="drill-down-results-comparator"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

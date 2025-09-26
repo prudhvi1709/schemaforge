@@ -24,9 +24,11 @@ import { renderDataIngestion } from "./data-ingestion.js";
 import { exportDbtLocalZip } from "./dbt-local-service.js";
 import { unsafeHTML } from "lit-html/directives/unsafe-html";
 import { Marked } from "https://cdn.jsdelivr.net/npm/marked@13/+esm";
+import { DataComparator } from "./comparator.js";
 
 const marked = new Marked();
 let fileData = null, schemaData = null, dbtRulesData = null, llmConfig = null, chatAttachedFile = null;
+let dataComparator = null;
 
 window.currentFileData = null;
 
@@ -42,6 +44,18 @@ async function init() {
   setupEventListeners();
   await initLlmConfig();
   await loadPromptsIntoTextareas();
+  initializeComparator();
+}
+
+function initializeComparator() {
+  dataComparator = new DataComparator();
+}
+
+// Update comparator file status when file data changes
+function updateComparatorStatus() {
+  if (dataComparator) {
+    dataComparator.updateFileStatus();
+  }
 }
 
 function setupEventListeners() {
@@ -272,6 +286,9 @@ async function processFile(data, name = null) {
   fileData = data;
   window.currentFileData = fileData;
   document.getElementById("results-container").classList.remove("d-none");
+  
+  // Update comparator status with new file data
+  updateComparatorStatus();
   
   schemaData = { schemas: [], relationships: [], suggestedJoins: [], modelingRecommendations: [] };
   renderSchemaResults(schemaData);
@@ -534,5 +551,7 @@ window.expandAllCards = expandAllCards;
 window.getSelectedModel = getSelectedModel;
 window.getLLMConfig = getLLMConfig;
 window.handleRunDbtLocally = handleRunDbtLocally;
+window.updateStatus = updateStatus;
+window.updateComparatorStatus = updateComparatorStatus;
 
 document.addEventListener("DOMContentLoaded", init);
