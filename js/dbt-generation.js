@@ -1,7 +1,7 @@
 // Import libraries
 import { parse } from "https://cdn.jsdelivr.net/npm/partial-json@0.1.7/+esm";
 import { asyncLLM } from "https://cdn.jsdelivr.net/npm/asyncllm@2";
-import { loadtxt } from './utils.js';
+import { loadtxt, generateDataProfile, convertSheetToProfileData } from './utils.js';
 
 /**
  * Generate DBT rules from schema using LLM with streaming
@@ -186,7 +186,25 @@ async function streamLLMResponse(llmConfig, options, onUpdate) {
  */
 async function createDbtRulesPrompt(schemaData) {
   const template = await loadtxt('./prompts/dbt-rules-generation.md');
-  return template.replace(/\$\{schemaData\}/g, JSON.stringify(schemaData));
+  
+  // Add data profiling information if available from the original file data
+  let dataProfileSection = "";
+  if (window.currentFileData && window.currentFileData.sheets) {
+    const profileResults = window.currentFileData.sheets.map(sheet => {
+      const profileData = convertSheetToProfileData(sheet);
+      const profile = generateDataProfile(profileData);
+      return {
+        sheetName: sheet.name,
+        profile: profile.profile || profile.error || "Profile unavailable",
+        summary: profile.summary
+      };
+    });
+    dataProfileSection = `\n\nDATA PROFILES:\n${JSON.stringify(profileResults, null, 2)}`;
+  }
+  
+  return template
+    .replace(/\$\{schemaData\}/g, JSON.stringify(schemaData))
+    .replace(/\$\{dataProfiles\}/g, dataProfileSection);
 }
 
 /**
@@ -196,7 +214,23 @@ async function createDbtRulesPrompt(schemaData) {
  */
 async function createChatSystemPrompt(context) {
   const template = await loadtxt('./prompts/dbt-chat-system.md');
-  return template.replace(/\$\{context\}/g, JSON.stringify(context));
+  
+  // Add data profiling information to context
+  let enhancedContext = { ...context };
+  if (context.fileData && context.fileData.sheets) {
+    const profileResults = context.fileData.sheets.map(sheet => {
+      const profileData = convertSheetToProfileData(sheet);
+      const profile = generateDataProfile(profileData);
+      return {
+        sheetName: sheet.name,
+        profile: profile.profile || profile.error || "Profile unavailable",
+        summary: profile.summary
+      };
+    });
+    enhancedContext.dataProfiles = profileResults;
+  }
+  
+  return template.replace(/\$\{context\}/g, JSON.stringify(enhancedContext));
 }
 
 /**

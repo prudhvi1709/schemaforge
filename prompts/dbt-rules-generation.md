@@ -1,6 +1,6 @@
-Based on the following schema information with relationships, generate comprehensive DBT rules including models, tests, and configurations.
+Based on the following schema information with relationships, generate comprehensive DBT rules including models, tests, and configurations. You have access to comprehensive data profiles including statistical analysis, data quality indicators, outlier detection, and data patterns to inform your DBT rule generation.
 
-Schema Data: ${schemaData}
+Schema Data: ${schemaData}${dataProfiles}
 
 CRITICAL: Only create tests for column names that ACTUALLY EXIST in the schema data. Do NOT create tests for inferred or expected column names.
 

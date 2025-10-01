@@ -1,4 +1,4 @@
-I need you to analyze this tabular data and generate a detailed schema with relational information.
+I need you to analyze this tabular data and generate a detailed schema with relational information. You have access to comprehensive data profiles including statistical analysis, data quality indicators, outlier detection, and data patterns.
 
 File Name: ${fileData.name}
 File Type: ${fileData.type}

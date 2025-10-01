@@ -1,7 +1,7 @@
 import { asyncLLM } from "https://cdn.jsdelivr.net/npm/asyncllm@2";
 import { parse } from "https://cdn.jsdelivr.net/npm/partial-json@0.1.7/+esm";
 import { generateDbtRules, getDbtRulesSummary, handleDbtRuleChat } from "./dbt-generation.js";
-import { loadtxt } from "./utils.js";
+import { loadtxt, generateDataProfile, convertSheetToProfileData } from "./utils.js";
 
 let customPrompts = { schema: null, dbtRules: null };
 let chatHistory = [];
@@ -32,12 +32,29 @@ export function resetChatHistory() {
 export async function generateSchema(fileData, llmConfig, onUpdate, model = "gpt-4.1-mini", globalTableRules = "") {
   try {
     const template = customPrompts.schema || await loadtxt('./prompts/schema-generation.md');
+    
+    // Generate comprehensive data profiles for each sheet
     const sheetsData = fileData.sheets.map(sheet => {
       const randomRows = sheet.sampleRows.slice(0, Math.min(sheet.sampleRows.length, 5));
       const tsvData = randomRows.map(row => 
         row.map(value => String(value || '').replace(/[\t\n]/g, ' ')).join('\t')
       ).join('\n');
-      return `\nSheet: ${sheet.name}\nHeaders: ${sheet.headers.join('\t')}\nSample Data (${randomRows.length} rows):\n${tsvData}`;
+      
+      // Convert sheet data to profile format and generate data profile
+      const profileData = convertSheetToProfileData(sheet);
+      const dataProfileResult = generateDataProfile(profileData);
+      
+      let profileSection = "";
+      if (dataProfileResult.profile) {
+        profileSection = `\nData Profile:\n${dataProfileResult.profile}`;
+      } else if (dataProfileResult.error) {
+        profileSection = `\nData Profile Error: ${dataProfileResult.error}`;
+        if (dataProfileResult.fallbackData) {
+          profileSection += `\nFallback Sample Data:\n${dataProfileResult.fallbackData}`;
+        }
+      }
+      
+      return `\nSheet: ${sheet.name}\nHeaders: ${sheet.headers.join('\t')}\nSample Data (${randomRows.length} rows):\n${tsvData}${profileSection}`;
     }).join('\n');
     
     const prompt = template
@@ -83,10 +100,41 @@ export async function streamChatResponse(context, userMessage, llmConfig, onUpda
       const result = await handleDbtRuleChat(context, userMessage, llmConfig, onUpdate, model);
       finalResponse = result.finalResponse;
     } else {
+      // Generate data profiles for attached files or existing file data
+      let attachedFileProfile = "";
+      let existingDataProfile = "";
+      
+      if (context.attachedFile && context.attachedFile.sheets) {
+        const profileResults = context.attachedFile.sheets.map(sheet => {
+          const profileData = convertSheetToProfileData(sheet);
+          const profile = generateDataProfile(profileData);
+          return {
+            sheetName: sheet.name,
+            profile: profile.profile || profile.error || "Profile unavailable"
+          };
+        });
+        attachedFileProfile = `Attached file data profiles: ${JSON.stringify(profileResults, null, 2)}`;
+      } else if (context.attachedFile) {
+        attachedFileProfile = `The user has attached a new file: ${context.attachedFile.name}. Here's the data: ${JSON.stringify(context.attachedFile)}.`;
+      }
+      
+      if (context.fileData && context.fileData.sheets) {
+        const profileResults = context.fileData.sheets.map(sheet => {
+          const profileData = convertSheetToProfileData(sheet);
+          const profile = generateDataProfile(profileData);
+          return {
+            sheetName: sheet.name,
+            profile: profile.profile || profile.error || "Profile unavailable"
+          };
+        });
+        existingDataProfile = `Existing file data profiles: ${JSON.stringify(profileResults, null, 2)}`;
+      }
+      
       const systemContent = [
-        "You are a helpful assistant specializing in data analysis, schema design, and DBT rules. Answer questions about the uploaded data file, schema, or DBT rules.",
-        context.attachedFile && `The user has attached a new file: ${context.attachedFile.name}. Here's the data: ${JSON.stringify(context.attachedFile)}.`,
-        (context.fileData || context.schema || context.dbtRules) && `Here's information about the existing data context: ${JSON.stringify({ fileData: context.fileData, schema: context.schema, dbtRules: context.dbtRules })}.`
+        "You are a helpful assistant specializing in data analysis, schema design, and DBT rules. Answer questions about the uploaded data file, schema, or DBT rules. You have access to comprehensive data profiles including statistical analysis, data quality indicators, and patterns.",
+        attachedFileProfile,
+        existingDataProfile,
+        (context.schema || context.dbtRules) && `Additional context: ${JSON.stringify({ schema: context.schema, dbtRules: context.dbtRules })}.`
       ].filter(Boolean).join(" ");
       
       let fullContent = "";

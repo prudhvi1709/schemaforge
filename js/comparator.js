@@ -1,22 +1,19 @@
 import { render, html } from "lit-html";
 import { openaiConfig } from "https://cdn.jsdelivr.net/npm/bootstrap-llm-provider@1.2";
-
-// System prompts
-const SYSTEM_PROMPTS = {
+import dataProfile from "https://unpkg.com/data-profile@1.0.0/dist/index.min.js";
+export const SYSTEM_PROMPTS = {
     columnMapping: `You are a data analyst expert. Analyze two datasets and create column mappings between them.
 Your task:
-1. Identify which columns from Dataset A correspond to columns in Dataset B (even if names are different). 
+1. Identify which columns from Dataset A correspond to columns in Dataset B (even if names are different).
 2. Provide common names for mapped columns
 3. **Very IMPORTANT: datatypes must be same for both the mapping columns.**
 3. Identify column data types and context
 4. **IMPORTANT: Identify date columns - these often appear as Excel serial numbers (like 45932, 45898) or date strings**
 5. Suggest which columns are suitable for SUM aggregation and COUNT aggregation
-
 **Date Detection Rules:**
 - Numbers like 45932, 45898, 44927 are Excel date serial numbers
 - Column names containing "date", "time", "created", "updated" are likely dates
 - Values that look like dates (YYYY-MM-DD, MM/DD/YYYY) are dates
-
 Return ONLY a valid JSON object with this exact structure:
 {
   "mappings": [
@@ -42,20 +39,15 @@ Return ONLY a valid JSON object with this exact structure:
     "mapped": ["common_name"]
   }
 }`,
-
+    
     discrepancyAnalysis: (hasMismatch) => hasMismatch ?
-        `You are a data analyst expert. Analyze the differences between two datasets for a specific group and explain why there are discrepancies.
-Provide a clear, concise analysis in 2-3 sentences explaining:
-1. What specific differences you observe
-2. Possible reasons for the discrepancies
-3. Recommendations for investigation
-Focus on data quality issues, missing records, calculation differences, or data processing problems.` :
-        `You are a data analyst expert. Analyze two datasets for a specific group that show matching aggregated values.
-Provide a clear, concise summary in 2-3 sentences explaining:
-1. What data consistency you observe
-2. What this matching data indicates about data quality
-3. Any insights about the data patterns
-Focus on data quality validation and consistency indicators.`
+        `You are a data analyst expert. Analyze the differences between two datasets for a specific group using their statistical profiles and explain why there are discrepancies.
+You will receive a json contains statistical profiles of two dataset.
+Provide a clear, concise 5-6 lines analysis .
+` :  
+        `You are a data analyst expert. Analyze two datasets for a specific group that show matching aggregated values using their statistical profiles.
+You will receive a json contains statistical profiles of two dataset.
+Provide a clear, concise 5-6 lines analysis.`
 };
 
 // Utility functions
@@ -518,24 +510,32 @@ Create column mappings and analysis. Pay special attention to identifying date c
         render(template, $('summary-results-comparator'));
     }
 
-    async analyzeDiscrepancy(summaryItem) {
-        if (!this.provider) {
-            await this.initLLM();
-            if (!this.provider) throw new Error("LLM not configured");
-        }
-        
+    async analyzeDiscrepancy(summaryItem){
+        let dataset1Profile = dataProfile(summaryItem.tab1Rows, {
+            associationMatrix: true,
+            keysDependencies: true,
+            missingnessPatterns: true,
+            outliers: true,
+            categoricalEntropy: true
+        });
+        dataset1Profile=JSON.stringify(dataset1Profile, null, 2)
+        let dataset2Profile = dataProfile(summaryItem.tab2Rows, {
+            associationMatrix: true,
+            keysDependencies: true,
+            missingnessPatterns: true,
+            outliers: true,
+            categoricalEntropy: true
+        });
+        dataset2Profile=JSON.stringify(dataset2Profile, null, 2)
         const userPrompt = `Group: ${summaryItem.group}
-Dataset 1 (${this.tabNames.tab1}) - ${summaryItem.tab1Rows.length} rows:
-Sum Values: ${JSON.stringify(summaryItem.tab1Sums)}
-Count Values: ${JSON.stringify(summaryItem.tab1Counts)}
-Sample Data: ${JSON.stringify(summaryItem.tab1Rows.slice(0, 5), null, 2)}
 
-Dataset 2 (${this.tabNames.tab2}) - ${summaryItem.tab2Rows.length} rows:
-Sum Values: ${JSON.stringify(summaryItem.tab2Sums)}
-Count Values: ${JSON.stringify(summaryItem.tab2Counts)}
-Sample Data: ${JSON.stringify(summaryItem.tab2Rows.slice(0, 5), null, 2)}
+    Dataset 1 (${this.tabNames.tab1}) -
+    Statistical Profile: ${dataset1Profile}
 
-${summaryItem.hasMismatch ? 'Analyze why these datasets show different aggregated values for this group.' : 'Analyze the consistency and patterns in these matching datasets for this group.'}`;
+    Dataset 2 (${this.tabNames.tab2}) -
+    Statistical Profile: ${dataset2Profile}
+
+    ${summaryItem.hasMismatch ? 'Analyze why these datasets show different aggregated values for this group based on the statistical profiles and data quality indicators.' : 'Analyze the consistency and patterns in these matching datasets for this group based on the statistical profiles.'}`;
 
         try {
             const response = await fetch(`${this.provider.baseUrl}/chat/completions`, {
@@ -595,7 +595,14 @@ ${summaryItem.hasMismatch ? 'Analyze why these datasets show different aggregate
     }
 
     async useExistingData() {
+        const btn = $('btn-use-existing-data');
+        const originalContent = btn.innerHTML;
+        
         try {
+            // Show spinner and disable button
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Processing...';
+            
             // Check if we have existing file data from SchemaForge
             const existingFileData = window.currentFileData;
             if (!existingFileData || !existingFileData._originalFileContent) {
@@ -611,6 +618,7 @@ ${summaryItem.hasMismatch ? 'Analyze why these datasets show different aggregate
                 this.tabData = result.tabData;
                 this.tabNames = result.tabNames;
                 
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Analyzing with AI...';
                 this.showAlert("Analyzing with AI...", "info");
                 this.columnMapping = await this.getColumnMapping();
                 
@@ -625,6 +633,10 @@ ${summaryItem.hasMismatch ? 'Analyze why these datasets show different aggregate
             }
         } catch (error) {
             this.showAlert(`Error processing existing data: ${error.message}`, "danger");
+        } finally {
+            // Restore button state
+            btn.disabled = false;
+            btn.innerHTML = originalContent;
         }
     }
 
@@ -684,5 +696,3 @@ ${summaryItem.hasMismatch ? 'Analyze why these datasets show different aggregate
         }
     }
 }
-
-// DataComparator is already exported above as export class

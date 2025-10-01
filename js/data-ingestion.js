@@ -1,6 +1,7 @@
 import { html, render } from 'lit-html';
 import { asyncLLM } from "https://cdn.jsdelivr.net/npm/asyncllm@2";
 import { parse } from "https://cdn.jsdelivr.net/npm/partial-json@0.1.7/+esm";
+import { generateDataProfile, convertSheetToProfileData } from './utils.js';
 
 const SUPPORTED_SOURCES = [
   { value: 'csv', label: 'CSV File' },
@@ -248,6 +249,21 @@ function createConversionPrompt(schemaData, sourceType, destType, conversionPara
     })) || []
   }));
 
+  // Add data profiling information if available from the original file data
+  let dataProfileSection = "";
+  if (window.currentFileData && window.currentFileData.sheets) {
+    const profileResults = window.currentFileData.sheets.map(sheet => {
+      const profileData = convertSheetToProfileData(sheet);
+      const profile = generateDataProfile(profileData);
+      return {
+        sheetName: sheet.name,
+        profile: profile.profile || profile.error || "Profile unavailable",
+        summary: profile.summary
+      };
+    });
+    dataProfileSection = `\n\n**Data Quality Profiles**:\n${JSON.stringify(profileResults, null, 2)}`;
+  }
+
   return `Generate Python conversion scripts for data ingestion with the following requirements:
 
 **Source Format**: ${sourceType}
@@ -258,7 +274,7 @@ function createConversionPrompt(schemaData, sourceType, destType, conversionPara
 ${JSON.stringify(schemaInfo, null, 2)}
 
 **Relationships**:
-${JSON.stringify(relationships, null, 2)}
+${JSON.stringify(relationships, null, 2)}${dataProfileSection}
 
 Please generate two Python scripts:
 1. **convert_to_source.py** - Converts uploaded file to the source format
