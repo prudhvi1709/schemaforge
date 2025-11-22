@@ -1,7 +1,12 @@
+// File: js/data-ingestion.js
+// Data ingestion configuration and conversion script generation
+
 import { html, render } from 'lit-html';
 import { asyncLLM } from "https://cdn.jsdelivr.net/npm/asyncllm@2";
 import { parse } from "https://cdn.jsdelivr.net/npm/partial-json@0.1.7/+esm";
 import { generateDataProfile, convertSheetToProfileData } from './utils.js';
+import { $, updateStatus } from './utils/dom-utils.js';
+import { downloadFile as downloadFileUtil, copyToClipboard as copyToClipboardUtil } from './utils/file-utils.js';
 
 const SUPPORTED_SOURCES = [
   { value: 'csv', label: 'CSV File' },
@@ -414,31 +419,26 @@ function displayGeneratedScripts(conversionData) {
 }
 
 /**
- * Copy script content to clipboard
+ * Copy script content to clipboard using shared utility
  * @param {String} elementId - ID of element containing script content
  */
 function copyToClipboard(elementId) {
-  const element = document.getElementById(elementId);
-  if (element) {
-    navigator.clipboard.writeText(element.textContent).then(() => {
-      // Show success message using status update
-      const statusDiv = document.getElementById('conversion-status');
+  copyToClipboardUtil(elementId, {
+    statusContainerId: 'conversion-status',
+    onSuccess: () => {
+      const statusDiv = $('conversion-status');
       if (statusDiv) {
         render(html`<div class="alert alert-success">Script copied to clipboard!</div>`, statusDiv);
-        
-        // Clear message after 2 seconds
-        setTimeout(() => {
-          render(html``, statusDiv);
-        }, 2000);
+        setTimeout(() => render(html``, statusDiv), 2000);
       }
-    }).catch(err => {
-      console.error('Failed to copy to clipboard:', err);
-      const statusDiv = document.getElementById('conversion-status');
+    },
+    onError: () => {
+      const statusDiv = $('conversion-status');
       if (statusDiv) {
         render(html`<div class="alert alert-danger">Failed to copy to clipboard</div>`, statusDiv);
       }
-    });
-  }
+    }
+  });
 }
 
 /**
@@ -446,43 +446,22 @@ function copyToClipboard(elementId) {
  */
 function handleExportWithConversionScripts() {
   if (!generatedFiles.sourceScript || !generatedFiles.destScript) {
-    const statusDiv = document.getElementById('conversion-status');
+    const statusDiv = $('conversion-status');
     if (statusDiv) {
       render(html`<div class="alert alert-warning">Please generate conversion scripts first.</div>`, statusDiv);
     }
     return;
   }
 
-  const statusDiv = document.getElementById('conversion-status');
+  const statusDiv = $('conversion-status');
   render(html`<div class="alert alert-info">Downloading Python scripts...</div>`, statusDiv);
-  
-  // Download the Python files directly
-  downloadFile('convert_to_source.py', generatedFiles.sourceScript);
-  downloadFile('convert_to_destination.py', generatedFiles.destScript);
+
+  // Download the Python files using shared utility
+  downloadFileUtil('convert_to_source.py', generatedFiles.sourceScript, 'text/plain');
+  downloadFileUtil('convert_to_destination.py', generatedFiles.destScript, 'text/plain');
 
   setTimeout(() => {
     render(html`<div class="alert alert-success">Python scripts downloaded successfully!</div>`, statusDiv);
-    
-    // Clear success message after 3 seconds
-    setTimeout(() => {
-      render(html``, statusDiv);
-    }, 3000);
+    setTimeout(() => render(html``, statusDiv), 3000);
   }, 500);
-}
-
-/**
- * Download a single file
- * @param {String} filename - Name of the file
- * @param {String} content - File content
- */
-function downloadFile(filename, content) {
-  const blob = new Blob([content], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }

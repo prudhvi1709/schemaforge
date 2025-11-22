@@ -1,5 +1,12 @@
-// Import data-profile library for consistent data profiling across LLM interactions
+// File: js/utils.js
+// Main utilities module - re-exports shared utilities and provides data profiling
+
 import dataProfile from "https://unpkg.com/data-profile@1.0.0/dist/index.min.js";
+
+// Re-export shared utilities for convenience
+export { $, showElements, hideElements, setLoading, updateStatus, renderLoadingSpinner, renderContent } from "./utils/dom-utils.js";
+export { downloadFile, copyToClipboard, copyTextToClipboard, readFileAs, getSampleData, formatExcelDate, excelSerialToDate } from "./utils/file-utils.js";
+export { streamLLMRequest, makeLLMRequest, extractJsonFromResponse, getSelectedModel } from "./utils/llm-utils.js";
 
 /**
  * Load text content from a file path
@@ -19,9 +26,20 @@ export async function loadtxt(filePath) {
 }
 
 /**
+ * Default options for data profiling
+ */
+const DEFAULT_PROFILE_OPTIONS = {
+  associationMatrix: true,
+  keysDependencies: true,
+  missingnessPatterns: true,
+  outliers: true,
+  categoricalEntropy: true
+};
+
+/**
  * Generate comprehensive data profile for LLM analysis
  * @param {Array} data - Array of data objects to profile
- * @param {Object} options - Profiling options
+ * @param {Object} options - Profiling options (merged with defaults)
  * @returns {Object} Comprehensive data profile
  */
 export function generateDataProfile(data, options = {}) {
@@ -30,16 +48,9 @@ export function generateDataProfile(data, options = {}) {
   }
 
   try {
-    const defaultOptions = {
-      associationMatrix: true,
-      keysDependencies: true,
-      missingnessPatterns: true,
-      outliers: true,
-      categoricalEntropy: true,
-      ...options
-    };
+    const mergedOptions = { ...DEFAULT_PROFILE_OPTIONS, ...options };
+    const profile = dataProfile(data, mergedOptions);
 
-    const profile = dataProfile(data, defaultOptions);
     return {
       profile: JSON.stringify(profile, null, 2),
       summary: {
@@ -50,9 +61,9 @@ export function generateDataProfile(data, options = {}) {
     };
   } catch (error) {
     console.error("Data profiling error:", error);
-    return { 
+    return {
       error: `Data profiling failed: ${error.message}`,
-      fallbackData: JSON.stringify(data.slice(0, 5), null, 2) // Fallback to sample data
+      fallbackData: JSON.stringify(data.slice(0, 5), null, 2)
     };
   }
 }
@@ -73,5 +84,26 @@ export function convertSheetToProfileData(sheet) {
       obj[header] = row[index];
     });
     return obj;
+  });
+}
+
+/**
+ * Generate profiles for all sheets in file data
+ * @param {Object} fileData - File data with sheets array
+ * @returns {Array} Array of profile results per sheet
+ */
+export function generateSheetProfiles(fileData) {
+  if (!fileData?.sheets) {
+    return [];
+  }
+
+  return fileData.sheets.map(sheet => {
+    const profileData = convertSheetToProfileData(sheet);
+    const profile = generateDataProfile(profileData);
+    return {
+      sheetName: sheet.name,
+      profile: profile.profile || profile.error || "Profile unavailable",
+      summary: profile.summary
+    };
   });
 }

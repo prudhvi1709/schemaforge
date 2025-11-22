@@ -1,107 +1,23 @@
+// File: js/comparator.js
+// Main DataComparator class - orchestrates data comparison workflow
+// Refactored to use shared utility modules (DRY principle)
+
 import { render, html } from "lit-html";
 import { openaiConfig } from "https://cdn.jsdelivr.net/npm/bootstrap-llm-provider@1.2";
 import dataProfile from "https://unpkg.com/data-profile@1.0.0/dist/index.min.js";
-export const SYSTEM_PROMPTS = {
-    columnMapping: `You are a data analyst expert. Analyze two datasets and create column mappings between them.
-Your task:
-1. Identify which columns from Dataset A correspond to columns in Dataset B (even if names are different).
-2. Provide common names for mapped columns
-3. **Very IMPORTANT: datatypes must be same for both the mapping columns.**
-3. Identify column data types and context
-4. **IMPORTANT: Identify date columns - these often appear as Excel serial numbers (like 45932, 45898) or date strings**
-5. Suggest which columns are suitable for SUM aggregation and COUNT aggregation
-**Date Detection Rules:**
-- Numbers like 45932, 45898, 44927 are Excel date serial numbers
-- Column names containing "date", "time", "created", "updated" are likely dates
-- Values that look like dates (YYYY-MM-DD, MM/DD/YYYY) are dates
-Return ONLY a valid JSON object with this exact structure:
-{
-  "mappings": [
-    {
-      "dataset1_column": "column_name_from_dataset1",
-      "dataset2_column": "column_name_from_dataset2",
-      "common_name": "unified_column_name",
-      "data_type": "string|number|date|boolean",
-      "description": "what this column represents",
-      "suitable_for_sum": false,
-      "suitable_for_count": true,
-      "is_excel_date_serial": true
-    }
-  ],
-  "dataset1_only": ["column1", "column2"],
-  "dataset2_only": ["column3", "column4"],
-  "suggested_grouping_columns": ["common_name1", "common_name2"],
-  "suggested_sum_columns": ["common_name3"],
-  "suggested_count_columns": ["common_name1", "common_name4"],
-  "date_columns": {
-    "dataset1": ["column_name"],
-    "dataset2": ["column_name"],
-    "mapped": ["common_name"]
-  }
-}`,
-    
-    discrepancyAnalysis: (hasMismatch) => hasMismatch ?
-        `You are a data analyst expert. Analyze the differences between two datasets for a specific group using their statistical profiles and explain why there are discrepancies.
-You will receive a json contains statistical profiles of two dataset.
-Provide a clear, concise 5-6 lines analysis .
-` :  
-        `You are a data analyst expert. Analyze two datasets for a specific group that show matching aggregated values using their statistical profiles.
-You will receive a json contains statistical profiles of two dataset.
-Provide a clear, concise 5-6 lines analysis.`
-};
 
-// Utility functions
-const $ = (id) => document.getElementById(id);
-const showElements = (...ids) => ids.forEach(id => $(id)?.classList.remove("d-none"));
-const hideElements = (...ids) => ids.forEach(id => $(id)?.classList.add("d-none"));
+// Import from shared utility modules (DRY - centralized utilities)
+import { $, showElements, renderLoadingSpinner } from "./utils/dom-utils.js";
+import { formatExcelDate, getSampleData } from "./utils/file-utils.js";
 
-// Date conversion utilities
-const excelToDate = (num) => new Date(new Date(1899, 11, 30).getTime() + (num * 86400000));
+// Import from comparator sub-modules
+import { SYSTEM_PROMPTS, createColumnMappingPrompt, createDiscrepancyPrompt } from "./comparator/comparator-prompts.js";
+import { renderCheckboxGroup, renderDrillTable } from "./comparator/comparator-ui.js";
 
-const formatExcelDate = (value) => {
-    try {
-        if (typeof value === 'number' && value > 1 && value < 100000) {
-            return excelToDate(value).toLocaleDateString();
-        }
-    } catch (e) { }
-    return value;
-};
+// Re-export SYSTEM_PROMPTS for backwards compatibility
+export { SYSTEM_PROMPTS };
 
-// Rendering utilities
-const renderCheckboxGroup = (columns, className, idPrefix) => columns.map(col => html`
-    <div class="form-check">
-        <input class="form-check-input ${className}" type="checkbox" id="${idPrefix}-${col}" value="${col}">
-        <label class="form-check-label" for="${idPrefix}-${col}">${col}</label>
-    </div>
-`);
-
-const renderDrillTable = (rows, title) => html`
-    <div class="col-md-6">
-        <h6>${title} (${rows.length} rows)</h6>
-        <div class="table-responsive" style="max-height: 300px;">
-            <table class="table table-sm">
-                <thead>
-                    <tr>${rows.length ? Object.keys(rows[0]).map(col => html`<th>${col}</th>`) : html`<th>No data</th>`}</tr>
-                </thead>
-                <tbody>
-                    ${rows.map(row => html`<tr>${Object.values(row).map(val => html`<td>${val}</td>`)}</tr>`)}
-                </tbody>
-            </table>
-        </div>
-    </div>
-`;
-
-const renderLoadingSpinner = (message = "Processing...") => html`
-    <div class="d-flex justify-content-center">
-        <div class="spinner-border text-primary" role="status"></div>
-        <span class="ms-2">${message}</span>
-    </div>
-`;
-
-// Data processing utilities
-const getSampleData = (data) => !data?.length ? { columns: [], rows: [] } :
-    { columns: Object.keys(data[0]), rows: data.slice(0, 10) };
-
+// File processing - uses XLSX global (loaded via CDN)
 const processFile = (file) => new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -109,15 +25,13 @@ const processFile = (file) => new Promise((resolve, reject) => {
             const workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
             if (workbook.SheetNames.length < 2) throw new Error('File must contain at least 2 sheets/tabs');
             const [sheet1Name, sheet2Name] = workbook.SheetNames;
-            const tabData = {
-                tab1: XLSX.utils.sheet_to_json(workbook.Sheets[sheet1Name]),
-                tab2: XLSX.utils.sheet_to_json(workbook.Sheets[sheet2Name])
-            };
-            const tabNames = {
-                tab1: sheet1Name,
-                tab2: sheet2Name
-            };
-            resolve({ tabData, tabNames });
+            resolve({
+                tabData: {
+                    tab1: XLSX.utils.sheet_to_json(workbook.Sheets[sheet1Name]),
+                    tab2: XLSX.utils.sheet_to_json(workbook.Sheets[sheet2Name])
+                },
+                tabNames: { tab1: sheet1Name, tab2: sheet2Name }
+            });
         } catch (error) {
             reject(error);
         }
@@ -126,6 +40,7 @@ const processFile = (file) => new Promise((resolve, reject) => {
     reader.readAsArrayBuffer(file);
 });
 
+// Apply column mapping to transform data rows to common column names
 const applyColumnMapping = (data, columnMapping, isDataset1 = true) => {
     if (!columnMapping || !data.length) return data;
     return data.map(row => {
@@ -144,6 +59,7 @@ const applyColumnMapping = (data, columnMapping, isDataset1 = true) => {
     });
 };
 
+// Calculate summary statistics grouped by specified keys
 const calculateSummaries = (data, groupingKeys, sumColumns, countColumns) => {
     if (!data?.length) return [];
     const groups = {};
