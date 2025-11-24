@@ -22,7 +22,6 @@ A modern web application that automatically generates DBT (Data Build Tool) rule
 - **Streaming Responses**: Real-time streaming of LLM outputs as they're generated
 - **Interactive ER Diagrams**: Drag-and-drop entity relationship diagrams with GoJS
 - **DBT Local Development**: Complete DBT project generation for local development environments
-- **AI Data Comparator**: Intelligent comparison of datasets with AI-powered column mapping and mismatch detection
 - **Sample Dataset Viewer**: Built-in office viewer for previewing sample datasets directly in browser
 
 ## 🏗️ Architecture
@@ -52,7 +51,6 @@ schemaforge/
 │   ├── dbt-generation.js   # DBT rules generation and chat functionality
 │   ├── dbt-local-service.js # DBT local development project creation
 │   ├── data-ingestion.js   # Data ingestion utilities and configurations
-│   ├── comparator.js       # AI-powered data comparison and mismatch detection
 │   └── utils.js            # Shared utility functions
 ├── prompts/                # LLM prompt templates
 │   ├── schema-generation.md
@@ -154,17 +152,7 @@ schemaforge/
 - Perform exploratory data analysis through natural language
 - **Streaming responses**: See the assistant's responses appear in real-time
 
-### Step 8: AI Data Comparator
-
-- Navigate to the "Data Comparator" tab for intelligent dataset comparison
-- **Upload Multi-Sheet Excel Files**: Upload Excel files with 2+ sheets for comparison
-- **AI Column Mapping**: Automatically maps columns between datasets using AI, even with different column names
-- **Smart Data Type Detection**: Identifies dates, numbers, strings with special handling for Excel date serials
-- **Mismatch Detection**: AI-powered analysis identifies data discrepancies and inconsistencies
-- **Dynamic Summarization**: Create custom summaries with grouping, sum, and count operations
-- **Drill-Down Analysis**: Click on mismatched rows for detailed AI-powered explanations
-
-### Step 9: Sample Dataset Viewer
+### Step 8: Sample Dataset Viewer
 
 - **Built-in Office Viewer**: Preview sample datasets directly in browser without downloading
 - **Multiple Format Support**: 
@@ -210,16 +198,6 @@ The application uses GoJS to create interactive entity relationship diagrams tha
 - Primary and foreign keys with clear visual indicators
 - Automatic layout with force-directed positioning
 
-### AI Data Comparator
-
-The Data Comparator leverages advanced AI capabilities for intelligent dataset analysis:
-
-- **Intelligent Column Mapping**: Uses LLM to map columns across datasets with different naming conventions
-- **Excel Date Serial Handling**: Automatically detects and handles Excel date serial numbers (e.g., 45932 → actual dates)
-- **Smart Data Type Inference**: AI identifies appropriate data types and aggregation suitability
-- **Mismatch Analysis**: Provides detailed explanations for data discrepancies using AI reasoning
-- **Dynamic Aggregation**: Supports flexible grouping, sum, and count operations on mapped data
-- **Multi-Sheet Processing**: Handles Excel files with multiple sheets using XLSX library
 
 ### Sample Dataset Viewer
 
@@ -261,9 +239,7 @@ The application is designed to work with multiple LLM providers through a flexib
 - **Consultants**: Rapid data assessment, documentation, and client-ready DBT projects
 - **Database Designers**: Visualize and refine database schemas with production-ready implementation
 - **DevOps Teams**: Automated DBT project scaffolding with infrastructure-as-code approach
-- **Data Quality Analysts**: Use AI Data Comparator to identify discrepancies between datasets and data versions
 - **Business Analysts**: Preview and explore sample datasets instantly without software installations
-- **Data Migration Teams**: Compare source and target datasets with intelligent column mapping
 - **Auditors**: Automated detection and explanation of data mismatches for compliance reporting
 
 ## 🛠️ Development
@@ -306,13 +282,6 @@ For issues and questions:
 
 ## 🆕 What's New
 
-### AI Data Comparator (Latest Update - v2.0)
-
-- **🤖 Intelligent Column Mapping**: AI automatically maps columns between datasets with different names
-- **📊 Smart Data Analysis**: Advanced detection of Excel date serials, data types, and aggregation suitability
-- **🔍 Mismatch Detection**: AI-powered identification and explanation of data discrepancies
-- **📈 Dynamic Summarization**: Flexible grouping, sum, and count operations with drill-down analysis
-- **📋 Multi-Sheet Support**: Process Excel files with multiple sheets for comprehensive comparison
 
 ### Sample Dataset Viewer
 

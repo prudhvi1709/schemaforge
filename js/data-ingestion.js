@@ -292,7 +292,7 @@ Requirements:
 - Use argparse with only the input file as a required positional argument
 - For single-sheet files (CSV, JSON, etc.), use the filename (without extension) as the table name
 - Include proper error handling and logging
-- Add data validation where appropriate
+- Add data quality checks where appropriate
 - Handle different file encodings
 - Add clear documentation and usage examples
 - Strictly follow the source and destination formats
