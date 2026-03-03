@@ -23,6 +23,8 @@ A modern web application that automatically generates DBT (Data Build Tool) rule
 - **Interactive ER Diagrams**: Drag-and-drop entity relationship diagrams with GoJS
 - **DBT Local Development**: Complete DBT project generation for local development environments
 - **Sample Dataset Viewer**: Built-in office viewer for previewing sample datasets directly in browser
+- **Cloud Run**: Execute DBT projects on a remote sandbox with real-time log streaming
+- **Google Authentication**: Secure sign-in via Google Identity Services for cloud-enabled features
 
 ## 🏗️ Architecture
 
@@ -35,21 +37,23 @@ The application is built with:
 - **JSON Handling**: `partial-json` for parsing incomplete JSON during streaming
 - **Modular Design**: Separated concerns across focused JavaScript modules
 - **Visualization**: GoJS library for interactive entity relationship diagrams
+- **Authentication**: Google Identity Services for JWT-based cloud access
 
 ### File Structure
 
 ```
 schemaforge/
 ├── index.html              # Main application interface
-├── config.json             # Sample dataset configurations
+├── config.json             # App configuration (sandbox URL, Google client ID, demo datasets)
 ├── js/
 │   ├── main.js             # Application entry point and orchestration
+│   ├── auth.js             # Google authentication and JWT management
 │   ├── file-parser.js      # CSV/Excel file parsing logic
 │   ├── llm-service.js      # LLM API integration and prompts
 │   ├── ui.js               # DOM manipulation and rendering
 │   ├── diagram.js          # Entity relationship diagram functionality
 │   ├── dbt-generation.js   # DBT rules generation and chat functionality
-│   ├── dbt-local-service.js # DBT local development project creation
+│   ├── dbt-local-service.js # DBT local development project creation and zip builder
 │   ├── data-ingestion.js   # Data ingestion utilities and configurations
 │   └── utils.js            # Shared utility functions
 ├── prompts/                # LLM prompt templates
@@ -95,6 +99,21 @@ schemaforge/
      - OpenRouter (`https://openrouter.com/api/v1`)
      - Ollama (`http://localhost:11434/v1`)
      - Any OpenAI-compatible API
+
+4. **Configure Cloud Run (optional)**
+
+   Edit `config.json` to enable the cloud execution feature:
+
+   ```json
+   {
+     "sandboxUrl": "https://your-sandbox-host",
+     "googleClientId": "your-google-oauth-client-id",
+     "demos": [ ... ]
+   }
+   ```
+
+   - `sandboxUrl`: The base URL of the remote sandbox that exposes `/auth` and `/api/run`
+   - `googleClientId`: OAuth 2.0 client ID from the Google Cloud Console
 
 ## 📋 Usage Guide
 
@@ -161,6 +180,15 @@ schemaforge/
 - **One-Click Preview**: Click the "👁️ View" button on any sample dataset card
 - **New Tab Opening**: All previews open in new tabs for seamless workflow
 
+### Step 9: Cloud Run
+
+- Click **"Run on Cloud"** to execute the DBT project on a remote sandbox
+- If not already signed in, a Google sign-in modal appears automatically
+- After authentication a JWT is stored locally; subsequent runs skip the sign-in step
+- Progress is streamed line-by-line to the **Cloud Run** tab in real time
+- The tab badge reflects current state: connecting → running → ✓ success / ✕ error
+- Requires `sandboxUrl` and `googleClientId` to be set in `config.json`
+
 ### Step 10: Export Results
 
 - Download the complete analysis as a structured JSON file
@@ -176,6 +204,27 @@ The application uses a multi-stage LLM process:
 1. **Schema Generation**: Analyzes file structure and sample data to create comprehensive schema
 2. **DBT Rules Generation**: Transforms schema into production-ready DBT configurations
 3. **DBT Local Project Creation**: Generates complete, deployable DBT projects with automated setup
+
+### Cloud Authentication
+
+The application uses Google Identity Services for secure, token-based access to cloud features:
+
+- **JWT management**: Tokens are stored in `localStorage` and validated against expiry on each request
+- **Sign-in modal**: Rendered on-demand using the Google Identity Services SDK; no page redirect required
+- **Auto sign-out**: Revokes the Google session token and clears stored credentials
+- **Header indicator**: The header shows the signed-in user's avatar and email, or a "Sign in required" hint
+- **Auth endpoint**: The sandbox is expected to expose `POST /auth` accepting `{ id_token }` and returning `{ token, user }`
+
+### Cloud Run
+
+One click executes the full DBT project on a remote sandbox:
+
+1. Validates that schema, DBT rules, and the original dataset file are all present
+2. Prompts for Google sign-in if the stored JWT is missing or expired
+3. Builds an in-memory ZIP archive of the complete DBT project (via `buildDbtZip`)
+4. `POST`s the archive to `{sandboxUrl}/api/run` with a `Bearer` token header
+5. Streams `text/event-stream` log lines back and appends them to the Cloud Run tab log
+6. Updates the tab badge to reflect current state and highlights errors in red
 
 ### DBT Local Development Features
 
@@ -279,18 +328,27 @@ For issues and questions:
 - Review the LLM provider configuration for API issues
 - Ensure file formats are supported (CSV, XLSX only)
 - For DBT local development issues, verify Python dependencies and file permissions on the setup script
+- For Cloud Run issues, confirm `sandboxUrl` and `googleClientId` are set in `config.json`, and that the sandbox `/auth` and `/api/run` endpoints are reachable
+- If the Google sign-in button does not appear, refresh the page to ensure the Google Identity Services script has loaded
 
 ## 🆕 What's New
 
+### Cloud Run & Google Authentication
 
-### Sample Dataset Viewer
+- **☁️ One-Click Cloud Execution**: Upload and run DBT projects on a remote sandbox with a single button click
+- **🔐 Google Sign-In**: Secure JWT-based authentication via Google Identity Services — no passwords stored
+- **📡 Real-Time Log Streaming**: Execution output streams line-by-line into a dedicated Cloud Run tab
+- **🔒 Persistent Sessions**: JWT is cached in `localStorage`; re-authentication is only required after expiry
+- **🖥️ Auth Status Header**: Signed-in user avatar and email displayed in the application header
+
+### Previous Updates
+
+#### Sample Dataset Viewer
 
 - **👁️ Built-in Office Viewer**: Preview datasets directly in browser without downloads
 - **🔄 Smart Format Handling**: Automatic viewer selection (Office Web Viewer for Excel, direct view for CSV)
 - **⚡ One-Click Access**: Instant preview with "View" buttons on sample dataset cards
 - **🌐 Cross-Platform**: Works on all modern browsers with no software requirements
-
-### Previous Updates
 
 #### DBT Local Development
 

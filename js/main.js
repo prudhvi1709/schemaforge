@@ -21,12 +21,13 @@ import {
   showDbtRuleLoadingIndicator,
 } from "./ui.js";
 import { renderDataIngestion } from "./data-ingestion.js";
-import { exportDbtLocalZip } from "./dbt-local-service.js";
+import { exportDbtLocalZip, buildDbtZip } from "./dbt-local-service.js";
 import { unsafeHTML } from "lit-html/directives/unsafe-html";
 import { Marked } from "https://cdn.jsdelivr.net/npm/marked@13/+esm";
+import { ensureLoggedIn, getToken, renderAuthUI } from "./auth.js";
 
 const marked = new Marked();
-let fileData = null, schemaData = null, dbtRulesData = null, llmConfig = null, chatAttachedFile = null;
+let fileData = null, schemaData = null, dbtRulesData = null, llmConfig = null, chatAttachedFile = null, googleClientId = null
 
 window.currentFileData = null;
 
@@ -42,6 +43,11 @@ async function init() {
   setupEventListeners();
   await initLlmConfig();
   await loadPromptsIntoTextareas();
+  const config = await fetch('./config.json').then(r => r.json()).catch(() => ({}));
+  googleClientId = config.googleClientId || null;
+  const sandboxUrl = config.sandboxUrl || null;
+  window.SANDBOX_URL = sandboxUrl;
+  renderAuthUI();
 }
 
 
@@ -57,7 +63,8 @@ function setupEventListeners() {
     "close-chat-btn": { event: "click", handler: toggleFloatingChat },
     "reset-chat-btn-floating": { event: "click", handler: handleResetChat },
     "chat-form-floating": { event: "submit", handler: handleChatSubmit },
-    "sample-datasets-btn": { event: "click", handler: handleSampleDatasetsClick }
+    "sample-datasets-btn": { event: "click", handler: handleSampleDatasetsClick },
+    "run-on-cloud-btn": { event: "click", handler: handleRunOnCloud }
   };
 
 
@@ -490,6 +497,93 @@ function handleRunDbtLocally() {
   }
   
   exportDbtLocalZip(schemaData, dbtRulesData, updateStatus, fileData);
+}
+
+async function handleRunOnCloud() {
+  const checks = [
+    [schemaData, "No data available to export."],
+    [dbtRulesData?.dbtRules, "DBT rules are required. Please generate DBT rules first."],
+    [fileData?._originalFileContent, "Original dataset file is required. Please upload a file first."]
+  ];
+  for (const [data, message] of checks) {
+    if (!data) return updateStatus(message, "warning");
+  }
+
+  try {
+    await ensureLoggedIn(googleClientId);
+  } catch {
+    return updateStatus("Sign in with Google to run on cloud.", "warning");
+  }
+
+  // Show and switch to the Cloud Run tab
+  const tabItem = document.getElementById('cloud-run-tab-item');
+  if (tabItem) tabItem.style.display = '';
+  bootstrap.Tab.getOrCreateInstance(document.getElementById('cloud-run-tab')).show();
+
+  const logEl = document.getElementById('cloud-run-log');
+  const statusEl = document.getElementById('cloud-run-status');
+  logEl.textContent = '';
+  statusEl.textContent = '⏳';
+  statusEl.className = 'badge bg-secondary ms-1';
+
+  const appendLog = (line) => {
+    logEl.textContent += line + '\n';
+    logEl.scrollTop = logEl.scrollHeight;
+  };
+
+  try {
+    appendLog('📦 Building project archive...');
+    const blob = await buildDbtZip(schemaData, dbtRulesData, fileData);
+    const formData = new FormData();
+    formData.append('project_zip', new File([blob], 'project.zip', { type: 'application/zip' }));
+
+    appendLog('🚀 Sending to cloud sandbox...');
+    statusEl.textContent = 'Connecting...';
+    statusEl.className = 'badge bg-info ms-1';
+    const baseUrl = window.SANDBOX_URL || window.location.origin;
+
+    const response = await fetch(
+      new URL('/api/run', baseUrl),
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${getToken()}`
+        },
+        body: formData
+      }
+    );
+
+    if (!response.ok) throw new Error(`Server error: ${response.status} ${response.statusText}`);
+
+    statusEl.textContent = 'Running...';
+    statusEl.className = 'badge bg-primary ms-1';
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const text = line.slice(6);
+          if (text.trim()) appendLog(text);
+        }
+      }
+    }
+    if (buffer.startsWith('data: ') && buffer.slice(6).trim()) appendLog(buffer.slice(6));
+
+    statusEl.textContent = '✓';
+    statusEl.className = 'badge bg-success ms-1';
+  } catch (e) {
+    appendLog(`\n❌ Error: ${e.message}`);
+    statusEl.textContent = '✕';
+    statusEl.className = 'badge bg-danger ms-1';
+  }
 }
 
 function toggleFloatingChat() {
