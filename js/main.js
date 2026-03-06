@@ -28,6 +28,7 @@ import { ensureLoggedIn, getToken, renderAuthUI } from "./auth.js";
 
 const marked = new Marked();
 let fileData = null, schemaData = null, dbtRulesData = null, llmConfig = null, chatAttachedFile = null, googleClientId = null
+let tryFixRetries = 0;
 
 window.currentFileData = null;
 
@@ -64,7 +65,10 @@ function setupEventListeners() {
     "reset-chat-btn-floating": { event: "click", handler: handleResetChat },
     "chat-form-floating": { event: "submit", handler: handleChatSubmit },
     "sample-datasets-btn": { event: "click", handler: handleSampleDatasetsClick },
-    "run-on-cloud-btn": { event: "click", handler: handleRunOnCloud }
+    "run-on-cloud-btn": { event: "click", handler: handleRunOnCloud },
+    "try-fix-btn": { event: "click", handler: () => new bootstrap.Modal(document.getElementById("fixModal")).show() },
+    "fetch-cloud-logs-btn": { event: "click", handler: fetchCloudLogs },
+    "submit-fix-btn": { event: "click", handler: handleFixDbtRules }
   };
 
 
@@ -74,6 +78,124 @@ function setupEventListeners() {
 
   setupChatFileListeners();
   setupChatResize();
+}
+
+function fetchCloudLogs() {
+  const cloudLogEl = document.getElementById('cloud-run-log');
+  const errorLogEl = document.getElementById('error-logs');
+  if (cloudLogEl && errorLogEl) {
+    const logs = cloudLogEl.textContent.trim();
+    if (logs) {
+      errorLogEl.value = logs;
+      updateStatus("Recent Cloud Run logs successfully imported", "success");
+    } else {
+      updateStatus("No Cloud Run logs found. Please run on cloud first.", "warning");
+    }
+  } else {
+    updateStatus("Could not access cloud logs", "danger");
+  }
+}
+
+async function handleFixDbtRules() {
+  const errorLogs = document.getElementById("error-logs").value.trim();
+  if (!errorLogs) return updateStatus("Please paste or fetch logs first", "warning");
+  if (!dbtRulesData || !llmConfig) return updateStatus("No DBT rules available to fix", "warning");
+
+  // Close modal immediately and show progress on the main UI
+  const modal = bootstrap.Modal.getInstance(document.getElementById("fixModal"));
+  if (modal) modal.hide();
+
+  // Switch to DBT Rules tab to show progress
+  const modelingTab = document.querySelector('[data-bs-target="#modeling-group"]');
+  if (modelingTab) bootstrap.Tab.getOrCreateInstance(modelingTab).show();
+  const dbtTab = document.querySelector('[data-bs-target="#dbt-tab"]');
+  if (dbtTab) bootstrap.Tab.getOrCreateInstance(dbtTab).show();
+
+  setLoading("fix", true);
+  const fixBtn = document.getElementById("try-fix-btn");
+  const fixBtnText = document.getElementById("try-fix-text");
+  const originalBtnContent = fixBtnText?.innerHTML;
+  if (fixBtnText) fixBtnText.textContent = "Fixing...";
+
+  try {
+    tryFixRetries++;
+    const badge = document.getElementById("retry-count-badge");
+    if (badge) {
+      badge.textContent = `${tryFixRetries} ${tryFixRetries === 1 ? 'iteration' : 'iterations'}`;
+      badge.classList.remove("d-none");
+    }
+
+    const fixPrompt = `
+I previously generated DBT rules for the following schema:
+${JSON.stringify(schemaData, null, 2)}
+
+Current DBT Rules:
+${JSON.stringify(dbtRulesData, null, 2)}
+
+However, running these rules resulted in the following errors:
+\`\`\`
+${errorLogs}
+\`\`\`
+
+---
+INSTRUCTIONS FOR FIXING:
+1. Analyze the logs to identify the root cause (e.g., syntax error, table not found, duplicate test names, duplicate column references, missing columns).
+2. If the error mentions 'two data_tests with the same name', it means a test (like not_null or unique) is defined multiple times for the same column, or a column is defined twice. REMOVE redundant definitions.
+3. Ensure that for each model, the 'models/schema.yml' will not have duplicate column definitions.
+4. If there were errors related to column names, double-check that you are using exactly the names from the provided schema dataset.
+5. Return the entire UPDATED dbtRules object including ALL tables.
+6. Your response MUST include the fixed rules as a single JSON object inside the following tag format:
+   <!-- UPDATED_DBT_RULES: { "dbtRules": [...], "globalRecommendations": [...], "summary": "..." } -->
+---
+`;
+
+    updateStatus(`Executing fix attempt #${tryFixRetries}...`, "info");
+    
+    const context = { fileData, schema: schemaData, dbtRules: dbtRulesData };
+    const response = await streamChatResponse(context, fixPrompt, llmConfig, (partial) => {
+      // Streamed updates ignored for now
+    }, getSelectedModel());
+
+    const rulesMatch = response.match(/<!-- UPDATED_DBT_RULES:(.+?) -->/s);
+    if (rulesMatch) {
+      try {
+        dbtRulesData = JSON.parse(rulesMatch[1]);
+        renderResults(schemaData, dbtRulesData);
+        updateStatus(`DBT rules updated after ${tryFixRetries} ${tryFixRetries === 1 ? 'iteration' : 'iterations'}!`, "success");
+      } catch (e) {
+        throw new Error("Failed to parse the updated rules from AI response.");
+      }
+    } else {
+      // Fallback: search for JSON block
+      try {
+        const cleaned = response.replace(/```json|```/g, '').trim();
+        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          if (parsed.dbtRules) {
+            dbtRulesData = parsed;
+            renderResults(schemaData, dbtRulesData);
+            updateStatus(`DBT rules updated after ${tryFixRetries} iterations (fallback parsing)`, "success");
+          } else {
+            throw new Error("Invalid response format");
+          }
+        } else {
+          throw new Error("No valid JSON found in response");
+        }
+      } catch (e) {
+        updateStatus("Could not automatically apply fixes. Check the chat for the AI's suggestions.", "warning");
+        if (document.getElementById("chat-container-floating").classList.contains("d-none")) {
+          toggleFloatingChat();
+        }
+        renderChatMessage("assistant", response, true);
+      }
+    }
+  } catch (error) {
+    updateStatus(`Error fixing DBT rules: ${error.message}`, "danger");
+  } finally {
+    setLoading("fix", false);
+    if (fixBtnText && originalBtnContent) fixBtnText.innerHTML = originalBtnContent;
+  }
 }
 
 function setupChatFileListeners() {
@@ -392,6 +514,7 @@ async function processFile(data, name = null) {
   window.currentSchemaData = schemaData;
   renderDataIngestion(schemaData);
   document.getElementById("generate-dbt-btn").classList.remove("d-none");
+  document.getElementById("try-fix-btn").classList.add("d-none");
   updateStatus(`Schema generation complete${name ? ` for ${name}` : ''}!`, "success");
 }
 
@@ -467,6 +590,19 @@ async function handleGenerateDbtRules() {
   updateStatus("Generating DBT rules...", "info");
   
   try {
+    tryFixRetries = 0;
+    const badge = document.getElementById("retry-count-badge");
+    if (badge) {
+      badge.textContent = "0";
+      badge.classList.add("d-none");
+    }
+
+    // Switch to DBT Rules tab to show progress
+    const modelingTab = document.querySelector('[data-bs-target="#modeling-group"]');
+    if (modelingTab) bootstrap.Tab.getOrCreateInstance(modelingTab).show();
+    const dbtTabSub = document.querySelector('[data-bs-target="#dbt-tab"]');
+    if (dbtTabSub) bootstrap.Tab.getOrCreateInstance(dbtTabSub).show();
+
     dbtRulesData = { dbtRules: [], globalRecommendations: [] };
     renderResults(schemaData, dbtRulesData);
     
@@ -477,6 +613,7 @@ async function handleGenerateDbtRules() {
     window.currentDbtRulesData = dbtRulesData;
     document.getElementById("chat-float-btn").classList.remove("d-none");
     document.getElementById("generate-dbt-btn").classList.add("d-none");
+    document.getElementById("try-fix-btn").classList.remove("d-none");
     updateStatus("DBT rules generation complete!", "success");
   } catch (error) {
     updateStatus(`Error generating DBT rules: ${error.message}`, "danger");

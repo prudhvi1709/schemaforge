@@ -88,21 +88,42 @@ function createSchemaYml(dbtRulesData, datasetName, schemaData) {
 
   dbtRulesData.dbtRules.forEach(rule => {
     const model = { name: rule.tableName, description: `Model derived from seed: ${datasetName}`, columns: [] };
+    const columnsMap = new Map();
+
     rule.tests?.forEach(test => {
       if (!actualColumns.has(test.column)) return;
       modelColumnTests.add(test.column);
-      const col = { name: test.column, tests: [] };
+      
+      let col = columnsMap.get(test.column);
+      if (!col) {
+        col = { name: test.column, tests: [] };
+        columnsMap.set(test.column, col);
+      }
+      
       test.tests?.forEach(t => col.tests.push(typeof t === 'string' ? t : { [Object.keys(t)[0]]: Array.isArray(t[Object.keys(t)[0]]) || typeof t[Object.keys(t)[0]] === 'object' ? t[Object.keys(t)[0]] : String(t[Object.keys(t)[0]]) }));
       test.relationships?.forEach(rel => col.tests.push({ [rel.test]: { to: rel.to, field: rel.field } }));
+    });
+    
+    for (const col of columnsMap.values()) {
       col.tests = [...new Set(col.tests.map(t => typeof t === 'string' ? t : JSON.stringify(t)))].map(t => t.startsWith('{') ? JSON.parse(t) : t);
       if (col.tests.length > 0) model.columns.push(col);
-    });
+    }
+    
     if (model.columns.length > 0) schemaObj.models.push(model);
   });
 
   const seed = { name: datasetName, description: "Source data for analysis", columns: [] };
-  schemaData.schemas?.forEach(tbl => {
+  const processedSeedColumns = new Set();
+  schemaData.schemas?.forEach((tbl, tblIdx) => {
+    // If multiple sheets are present, we currently only convert the first one to a seed
+    // but schemaData might have all of them. Let's only take columns from the first table
+    // or deduplicate if we intend to merge (though merging logic isn't in convert.py)
+    if (tblIdx > 0 && schemaData.schemas.length > 1) return; 
+
     tbl.columns?.forEach(col => {
+      if (processedSeedColumns.has(col.name)) return;
+      processedSeedColumns.add(col.name);
+
       const seedCol = { name: col.name, description: col.description || '' };
       if (!modelColumnTests.has(col.name)) {
         const tests = [...new Set([...(col.isPrimaryKey ? ['not_null', 'unique'] : []), ...(col.constraints?.filter(c => c.toLowerCase().includes('not null')).map(() => 'not_null') || []), ...(col.constraints?.filter(c => c.toLowerCase().includes('unique')).map(() => 'unique') || [])])];
