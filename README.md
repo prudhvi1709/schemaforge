@@ -299,3 +299,6 @@ For issues and questions:
 - **Column Validation**: Smart test generation that prevents "column not found" errors
 - **DuckDB Integration**: Pre-configured local development environment
 - **Production Ready**: Includes proper SQL model generation, schema validation, and documentation
+
+---
+> **This is Demo. contains no confidential data/IP**
