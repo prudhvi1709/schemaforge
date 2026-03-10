@@ -99,6 +99,9 @@ export async function streamChatResponse(context, userMessage, llmConfig, onUpda
     if (isDbtRelated) {
       const result = await handleDbtRuleChat(context, userMessage, llmConfig, onUpdate, model);
       finalResponse = result.finalResponse;
+      // Return the full result (includes updatedRules when provided) so callers can act on structured changes
+      chatHistory.push({ role: "assistant", content: finalResponse });
+      return result;
     } else {
       // Generate data profiles for attached files or existing file data
       let attachedFileProfile = "";

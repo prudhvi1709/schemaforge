@@ -141,6 +141,9 @@
                 <span id="try-fix-text"><i class="bi bi-bug me-1"></i>Issue with DBT Rules?</span>
                 <span class="badge bg-dark text-white ms-1 d-none" id="retry-count-badge">0 fixes</span>
               </button>
+              <button class="btn btn-outline-secondary d-none ms-2" id="undo-fix-btn">
+                <i class="bi bi-arrow-counterclockwise me-1"></i>Undo last fix
+              </button>
               <button class="btn btn-success" id="run-dbt-locally-btn">Run DBT Locally</button>
               <button class="btn btn-info text-white" id="run-on-cloud-btn">
                 <i class="bi bi-cloud-arrow-up me-1"></i>Run on Cloud
@@ -229,7 +232,10 @@
 
               <!-- Cloud Run Group -->
               <div class="tab-pane fade" id="cloud-run-group">
-                <pre id="cloud-run-log" style="background:#1a1a2e;color:#e0e0e0;font-family:'Menlo','Consolas','Courier New',monospace;font-size:0.78rem;line-height:1.6;min-height:320px;max-height:55vh;overflow-y:auto;margin:0;padding:1.25rem;border-radius:0.375rem;"></pre>
+                            <div class="d-flex justify-content-end mb-2">
+                              <button class="btn btn-sm btn-outline-danger d-none" id="cloud-run-cancel-btn"><i class="bi bi-x-circle me-1"></i>Cancel</button>
+                            </div>
+                            <pre id="cloud-run-log" style="background:#1a1a2e;color:#e0e0e0;font-family:'Menlo','Consolas','Courier New',monospace;font-size:0.78rem;line-height:1.6;min-height:320px;max-height:55vh;overflow-y:auto;margin:0;padding:1.25rem;border-radius:0.375rem;"></pre>
               </div>
 
             </div>
@@ -320,21 +326,6 @@
     </div>
   </div>
 
-  <!-- Sandbox Terminal Modal -->
-  <div class="modal fade" id="terminalModal" tabindex="-1" aria-labelledby="terminalModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl">
-      <div class="modal-content text-dark">
-        <div class="modal-header">
-          <h5 class="modal-title" id="terminalModalLabel">Sandbox Terminal</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body p-0">
-          <div id="terminal-container" style="height: 600px; width: 100%;"></div>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- Try to Fix Modal -->
   <div class="modal fade" id="fixModal" tabindex="-1" aria-labelledby="fixModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
@@ -357,7 +348,7 @@
           <div>
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
             <button type="button" class="btn btn-primary" id="submit-fix-btn">
-              <span class="spinner-border spinner-border-sm d-none" id="fix-spinner" role="status" aria-hidden="true"></span>
+              <span class="spinner-border spinner-border-sm d-none" id="btn-fix-spinner" role="status" aria-hidden="true"></span>
               Fix DBT Rules
             </button>
           </div>

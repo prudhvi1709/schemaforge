@@ -27,8 +27,38 @@ import { Marked } from "https://cdn.jsdelivr.net/npm/marked@13/+esm";
 import { ensureLoggedIn, getToken, renderAuthUI } from "./auth.js";
 
 const marked = new Marked();
-let fileData = null, schemaData = null, dbtRulesData = null, llmConfig = null, chatAttachedFile = null, googleClientId = null
+let fileData = null, schemaData = null, dbtRulesData = null, llmConfig = null, chatAttachedFile = null, sandboxBaseUrl = null, googleClientId = null
+let previousDbtRules = null;
+
+function backupDbtRules() {
+  try {
+    previousDbtRules = dbtRulesData ? JSON.parse(JSON.stringify(dbtRulesData)) : null;
+    const undoBtn = document.getElementById('undo-fix-btn');
+    if (undoBtn) undoBtn.classList.remove('d-none');
+  } catch (e) {
+    console.debug('Failed to backup dbtRulesData', e);
+    previousDbtRules = null;
+  }
+}
+
+function hideUndoButton() {
+  const undoBtn = document.getElementById('undo-fix-btn');
+  if (undoBtn) {
+    undoBtn.classList.add('d-none');
+    undoBtn.disabled = false;
+  }
+}
+
+function undoLastFix() {
+  if (!previousDbtRules) return updateStatus('Nothing to undo', 'info');
+  dbtRulesData = previousDbtRules;
+  previousDbtRules = null;
+  renderResults(schemaData, dbtRulesData);
+  hideUndoButton();
+  updateStatus('Reverted to previous DBT rules', 'success');
+}
 let tryFixRetries = 0;
+const MAX_FIX_RETRIES = 3;
 
 window.currentFileData = null;
 
@@ -46,9 +76,24 @@ async function init() {
   await loadPromptsIntoTextareas();
   const config = await fetch('./config.json').then(r => r.json()).catch(() => ({}));
   googleClientId = config.googleClientId || null;
-  const sandboxUrl = config.sandboxUrl || null;
-  window.SANDBOX_URL = sandboxUrl;
+  sandboxBaseUrl = config.sandboxUrl || null;
   renderAuthUI();
+  // Ensure run-on-cloud button has a handler even if setupEventListeners missed it
+  const runBtn = document.getElementById('run-on-cloud-btn');
+  if (runBtn && !runBtn._hasRunOnCloudHandler) {
+    runBtn.addEventListener('click', handleRunOnCloud);
+    runBtn._hasRunOnCloudHandler = true;
+  } else if (!runBtn) {
+    console.debug('run-on-cloud-btn not found during init()');
+  }
+  // Attach undo button handler
+  const undoBtn = document.getElementById('undo-fix-btn');
+  if (undoBtn && !undoBtn._hasUndoHandler) {
+    undoBtn.addEventListener('click', () => {
+      undoLastFix();
+    });
+    undoBtn._hasUndoHandler = true;
+  }
 }
 
 
@@ -100,6 +145,9 @@ async function handleFixDbtRules() {
   const errorLogs = document.getElementById("error-logs").value.trim();
   if (!errorLogs) return updateStatus("Please paste or fetch logs first", "warning");
   if (!dbtRulesData || !llmConfig) return updateStatus("No DBT rules available to fix", "warning");
+  if (tryFixRetries >= MAX_FIX_RETRIES) {
+    return updateStatus(`Maximum fix attempts (${MAX_FIX_RETRIES}) reached. Review the rules manually or start fresh.`, "danger");
+  }
 
   // Close modal immediately and show progress on the main UI
   const modal = bootstrap.Modal.getInstance(document.getElementById("fixModal"));
@@ -121,7 +169,7 @@ async function handleFixDbtRules() {
     tryFixRetries++;
     const badge = document.getElementById("retry-count-badge");
     if (badge) {
-      badge.textContent = `${tryFixRetries} ${tryFixRetries === 1 ? 'iteration' : 'iterations'}`;
+      badge.textContent = `${tryFixRetries}/${MAX_FIX_RETRIES} ${tryFixRetries === 1 ? 'iteration' : 'iterations'}`;
       badge.classList.remove("d-none");
     }
 
@@ -143,41 +191,42 @@ INSTRUCTIONS FOR FIXING:
 2. If the error mentions 'two data_tests with the same name', it means a test (like not_null or unique) is defined multiple times for the same column, or a column is defined twice. REMOVE redundant definitions.
 3. Ensure that for each model, the 'models/schema.yml' will not have duplicate column definitions.
 4. If there were errors related to column names, double-check that you are using exactly the names from the provided schema dataset.
-5. Return the entire UPDATED dbtRules object including ALL tables.
-6. Your response MUST include the fixed rules as a single JSON object inside the following tag format:
-   <!-- UPDATED_DBT_RULES: { "dbtRules": [...], "globalRecommendations": [...], "summary": "..." } -->
----
+5. Return the entire fixed DBT rules as a single JSON object (no surrounding prose) with keys: \`dbtRules\`, \`globalRecommendations\`, and \`summary\`.
+  The assistant should respond only with the JSON object (or a top-level \`DBT_RULE_JSON\` object) so the client can parse it directly.
 `;
 
     updateStatus(`Executing fix attempt #${tryFixRetries}...`, "info");
     
     const context = { fileData, schema: schemaData, dbtRules: dbtRulesData };
-    const response = await streamChatResponse(context, fixPrompt, llmConfig, (partial) => {
+    const result = await streamChatResponse(context, fixPrompt, llmConfig, (partial) => {
       // Streamed updates ignored for now
     }, getSelectedModel());
 
-    const rulesMatch = response.match(/<!-- UPDATED_DBT_RULES:(.+?) -->/s);
-    if (rulesMatch) {
-      try {
-        dbtRulesData = JSON.parse(rulesMatch[1]);
-        renderResults(schemaData, dbtRulesData);
-        updateStatus(`DBT rules updated after ${tryFixRetries} ${tryFixRetries === 1 ? 'iteration' : 'iterations'}!`, "success");
-      } catch (e) {
-        throw new Error("Failed to parse the updated rules from AI response.");
-      }
+    // result may be a string (legacy) or an object { finalResponse, updatedRules }
+    const responseText = typeof result === 'string' ? result : result.finalResponse;
+    const updatedRulesFromResult = result?.updatedRules;
+
+    if (updatedRulesFromResult) {
+      // backup before overwriting so user can undo
+      backupDbtRules();
+      dbtRulesData = updatedRulesFromResult;
+      renderResults(schemaData, dbtRulesData);
+      updateStatus(`DBT rules updated after ${tryFixRetries}/${MAX_FIX_RETRIES} ${tryFixRetries === 1 ? 'iteration' : 'iterations'}!`, "success");
     } else {
-      // Fallback: search for JSON block
+      // Try to parse JSON object from the assistant response
       try {
-        const cleaned = response.replace(/```json|```/g, '').trim();
+        const cleaned = responseText.replace(/```json|```/g, '').trim();
         const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]);
           if (parsed.dbtRules) {
+            // backup before overwrite
+            backupDbtRules();
             dbtRulesData = parsed;
             renderResults(schemaData, dbtRulesData);
-            updateStatus(`DBT rules updated after ${tryFixRetries} iterations (fallback parsing)`, "success");
+            updateStatus(`DBT rules updated after ${tryFixRetries}/${MAX_FIX_RETRIES} ${tryFixRetries === 1 ? 'iteration' : 'iterations'} (parsed JSON)`, "success");
           } else {
-            throw new Error("Invalid response format");
+            throw new Error("Invalid response format — missing dbtRules");
           }
         } else {
           throw new Error("No valid JSON found in response");
@@ -187,7 +236,7 @@ INSTRUCTIONS FOR FIXING:
         if (document.getElementById("chat-container-floating").classList.contains("d-none")) {
           toggleFloatingChat();
         }
-        renderChatMessage("assistant", response, true);
+        renderChatMessage("assistant", responseText, true);
       }
     }
   } catch (error) {
@@ -493,7 +542,9 @@ async function processFile(data, name = null) {
   window.currentFileData = fileData;
   document.getElementById("results-container").classList.remove("d-none");
   
-  
+  // Reset transient state for a newly uploaded file
+  tryFixRetries = 0;
+
   schemaData = { schemas: [], relationships: [], suggestedJoins: [], modelingRecommendations: [] };
   renderSchemaResults(schemaData);
   updateStatus("Generating schema...", "info");
@@ -646,10 +697,26 @@ async function handleRunOnCloud() {
     if (!data) return updateStatus(message, "warning");
   }
 
+  const baseUrl = sandboxBaseUrl;
+
+  // Guard: ensure cloud configuration is present and not placeholder values
+  if (
+    !baseUrl ||
+    baseUrl.startsWith('<') ||
+    !googleClientId ||
+    googleClientId.startsWith('<')
+  ) {
+    updateStatus(
+      'Cloud Run not configured — set sandboxUrl and googleClientId in config.json',
+      'danger',
+    );
+    return;
+  }
+
   try {
-    await ensureLoggedIn(googleClientId);
+    await ensureLoggedIn(googleClientId, baseUrl);
   } catch {
-    return updateStatus("Sign in with Google to run on cloud.", "warning");
+    return updateStatus('Sign in with Google to run on cloud.', 'warning');
   }
 
   // Show and switch to the Cloud Run tab
@@ -668,7 +735,35 @@ async function handleRunOnCloud() {
     logEl.scrollTop = logEl.scrollHeight;
   };
 
+  // Create AbortController so user can cancel a hung stream
+  const controller = new AbortController();
+  const { signal } = controller;
+  const cancelBtn = document.getElementById('cloud-run-cancel-btn');
+  if (cancelBtn) {
+    cancelBtn.classList.remove('d-none');
+    cancelBtn.disabled = false;
+    const onCancel = () => {
+      controller.abort();
+      cancelBtn.disabled = true;
+    };
+    cancelBtn.addEventListener('click', onCancel, { once: true });
+  }
+
   try {
+    // Quick connectivity check before spending time building the archive
+    appendLog('🔍 Checking sandbox availability...');
+    try {
+      const healthRes = await fetch(new URL('/health', baseUrl), {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!healthRes.ok) throw new Error(`Health check failed: ${healthRes.status}`);
+    } catch (healthErr) {
+      appendLog(`\n❌ Sandbox unreachable: ${healthErr.message}`);
+      statusEl.textContent = 'Unavailable';
+      statusEl.className = 'badge bg-danger ms-1';
+      return;
+    }
+
     appendLog('📦 Building project archive...');
     const blob = await buildDbtZip(schemaData, dbtRulesData, fileData);
     const formData = new FormData();
@@ -677,19 +772,22 @@ async function handleRunOnCloud() {
     appendLog('🚀 Sending to cloud sandbox...');
     statusEl.textContent = 'Connecting...';
     statusEl.className = 'badge bg-info ms-1';
-    const baseUrl = window.SANDBOX_URL || window.location.origin;
 
-    const response = await fetch(
-      new URL('/api/run', baseUrl),
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${getToken()}`
-        },
-        body: formData
-      }
-    );
+    const response = await fetch(new URL('/api/run', baseUrl), {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${getToken()}` },
+      body: formData,
+      signal,
+    });
 
+    if (response.status === 401) {
+      // Token expired mid-run — prompt re-authentication
+      appendLog('\n🔐 Session expired. Please sign in again and retry.');
+      statusEl.textContent = 'Auth expired';
+      statusEl.className = 'badge bg-warning ms-1';
+      try { await ensureLoggedIn(googleClientId, baseUrl); } catch { /* user dismissed */ }
+      return;
+    }
     if (!response.ok) throw new Error(`Server error: ${response.status} ${response.statusText}`);
 
     statusEl.textContent = 'Running...';
@@ -699,27 +797,45 @@ async function handleRunOnCloud() {
     const decoder = new TextDecoder();
     let buffer = '';
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop();
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const text = line.slice(6);
-          if (text.trim()) appendLog(text);
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const text = line.slice(6);
+            if (text.trim()) appendLog(text);
+          }
         }
       }
+      if (buffer.startsWith('data: ') && buffer.slice(6).trim()) appendLog(buffer.slice(6));
+    } catch (readErr) {
+      if (readErr.name === 'AbortError') {
+        appendLog('\n⏹️ Stream aborted by user');
+        statusEl.textContent = 'Cancelled';
+        statusEl.className = 'badge bg-warning ms-1';
+        return;
+      }
+      throw readErr;
     }
-    if (buffer.startsWith('data: ') && buffer.slice(6).trim()) appendLog(buffer.slice(6));
 
     statusEl.textContent = '✓';
     statusEl.className = 'badge bg-success ms-1';
   } catch (e) {
-    appendLog(`\n❌ Error: ${e.message}`);
-    statusEl.textContent = '✕';
-    statusEl.className = 'badge bg-danger ms-1';
+    if (e.name === 'AbortError') {
+      appendLog('\n⏹️ Request aborted');
+      statusEl.textContent = 'Cancelled';
+      statusEl.className = 'badge bg-warning ms-1';
+    } else {
+      appendLog(`\n❌ Error: ${e.message}`);
+      statusEl.textContent = '✕';
+      statusEl.className = 'badge bg-danger ms-1';
+    }
+  } finally {
+    if (cancelBtn) cancelBtn.classList.add('d-none');
   }
 }
 
@@ -772,19 +888,37 @@ async function handleChatSubmit(event) {
     if (placeholder.parentNode) placeholder.remove();
     showDbtRuleLoadingIndicator(false);
     
-    const rulesMatch = response.match(/<!-- UPDATED_DBT_RULES:(.+?) -->/s);
-    if (rulesMatch) {
+    // response may be a string or an object { finalResponse, updatedRules }
+    const isObjectResponse = typeof response === 'object' && response !== null;
+    const responseText = isObjectResponse ? response.finalResponse : response;
+    const updatedRulesFromResponse = isObjectResponse ? response.updatedRules : null;
+
+    if (updatedRulesFromResponse) {
       try {
-        dbtRulesData = JSON.parse(rulesMatch[1]);
+        dbtRulesData = updatedRulesFromResponse;
         renderResults(schemaData, dbtRulesData);
-        const clean = response.replace(/<!-- UPDATED_DBT_RULES:.+? -->/s, '').replace(/<!-- LAST_MODIFIED_TABLE:.+? -->/s, '');
+        const clean = responseText || '';
         renderChatMessage("assistant", clean, true);
-        if (clean.includes('DBT Rules Updated')) handleDbtRuleUpdate(response, clean);
+        if (clean.includes('DBT Rules Updated')) handleDbtRuleUpdate(clean, clean);
       } catch {
-        renderChatMessage("assistant", response, true);
+        renderChatMessage("assistant", responseText, true);
       }
     } else {
-      renderChatMessage("assistant", response, true);
+      // Fallback: look for JSON blob in text response
+      try {
+        const rulesMatch = responseText.match(/<!-- UPDATED_DBT_RULES:(.+?) -->/s);
+        if (rulesMatch) {
+          dbtRulesData = JSON.parse(rulesMatch[1]);
+          renderResults(schemaData, dbtRulesData);
+          const clean = responseText.replace(/<!-- UPDATED_DBT_RULES:.+? -->/s, '').replace(/<!-- LAST_MODIFIED_TABLE:.+? -->/s, '');
+          renderChatMessage("assistant", clean, true);
+          if (clean.includes('DBT Rules Updated')) handleDbtRuleUpdate(responseText, clean);
+        } else {
+          renderChatMessage("assistant", responseText, true);
+        }
+      } catch {
+        renderChatMessage("assistant", responseText, true);
+      }
     }
   } catch (error) {
     updateStatus(`Chat error: ${error.message}`, "danger");
@@ -810,11 +944,21 @@ function updateStatus(message, type = "info") {
 }
 
 function setLoading(action, isLoading) {
-  const spinner = document.getElementById(action === "chat-floating" ? "chat-spinner-floating" : `${action}-spinner`);
+  const spinnerId = action === "chat-floating" ? "chat-spinner-floating" : `${action}-spinner`;
+  const spinner = document.getElementById(spinnerId);
   const button = spinner?.closest("button");
+
   if (spinner && button) {
     spinner.classList.toggle("d-none", !isLoading);
     button.disabled = isLoading;
+  }
+
+  // For the 'fix' action also toggle the modal's submit spinner and button
+  if (action === "fix") {
+    const modalSpinner = document.getElementById("btn-fix-spinner");
+    const modalBtn = document.getElementById("submit-fix-btn");
+    if (modalSpinner) modalSpinner.classList.toggle("d-none", !isLoading);
+    if (modalBtn) modalBtn.disabled = isLoading;
   }
 }
 

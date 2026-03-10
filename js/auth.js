@@ -1,6 +1,6 @@
-const getAuthUrl = () => {
-  const base = window.SANDBOX_URL || window.location.origin;
-  return new URL('/auth', base).toString();
+const getAuthUrl = (sandboxUrl) => {
+  if (!sandboxUrl) throw new Error('Missing sandboxUrl for auth endpoint');
+  return new URL('/auth', sandboxUrl).toString();
 };
 const TOKEN_KEY = 'sf_jwt';
 const USER_KEY  = 'sf_user';
@@ -17,6 +17,7 @@ export function isLoggedIn() {
   const token = getToken();
   if (!token) return false;
   try {
+    // Decode payload only to check expiry — signature verification is server-side
     const { exp } = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
     return exp * 1000 > Date.now();
   } catch { return false; }
@@ -30,8 +31,8 @@ function signOut() {
   renderAuthUI();
 }
 
-async function exchangeToken(id_token) {
-  const res = await fetch(getAuthUrl(), {
+async function exchangeToken(id_token, sandboxUrl) {
+  const res = await fetch(getAuthUrl(sandboxUrl), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id_token }),
@@ -64,7 +65,7 @@ export function renderAuthUI() {
 
 // ── Login modal ────────────────────────────────────────────────────────────────
 
-export function ensureLoggedIn(clientId) {
+export function ensureLoggedIn(clientId, sandboxUrl) {
   if (isLoggedIn()) return Promise.resolve();
 
   return new Promise((resolve, reject) => {
@@ -98,7 +99,7 @@ export function ensureLoggedIn(clientId) {
 
     bsModal.show();
 
-    modalEl.addEventListener('shown.bs.modal', () => {
+      modalEl.addEventListener('shown.bs.modal', () => {
       if (!window.google?.accounts?.id) {
         document.getElementById('auth-modal-error').textContent = 'Google Sign-In failed to load. Refresh the page.';
         document.getElementById('auth-modal-error').classList.remove('d-none');
@@ -108,7 +109,7 @@ export function ensureLoggedIn(clientId) {
         client_id: clientId,
         callback: async ({ credential }) => {
           try {
-            const user = await exchangeToken(credential);
+            const user = await exchangeToken(credential, sandboxUrl);
             bsModal.hide();
             renderAuthUI();
             resolve(user);
