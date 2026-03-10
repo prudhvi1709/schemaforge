@@ -1,4 +1,6 @@
 {
+  "sandboxUrl": "<SANDBOX_URL>",
+  "googleClientId": "<GOOGLE_CLIENT_ID>",
   "demos": [
     {
       "title": "EHR Data",
